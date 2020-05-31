@@ -60,6 +60,7 @@ class Environment(object):
         agent.initialize_in_environment(self)
 
         for step in range(num_steps):
+            
             # Take an action
             a = agent.take_action(self.s)
 
@@ -70,6 +71,8 @@ class Environment(object):
 
             # Update agent
             agent.update([s, a, s_, r])
+
+            print('I chose action {}'.format(a))
         
         return agent
 
@@ -172,9 +175,9 @@ class MultiArmedBandit(Environment):
     
     @classmethod
     def default(cls):
-        params = {'num_bandits': 3, 
+        params = {'num_bandits': 4, 
                   'reward_distrib': ['normal'], 
-                  'reward_distrib_params': [[1,1], [2,2], [3,0.5]],
+                  'reward_distrib_params': [[1,1], [2,2], [3,0.5], [4,5]]
         }
         return cls(params)
 
