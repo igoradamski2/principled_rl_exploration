@@ -67,7 +67,11 @@ class BayesianGaussian(object):
         
         if which_moment == 2:
             # Here we return the second predictive moment
-            return (special.gamma(self.alpha-1)/special.gamma(self.alpha))*self.beta
+            return self.mu**2 + (1+(1/self.lmbda))*(self.beta/(self.alpha - 1))
+        
+        if which_moment == 'epistemic_variance':
+            # Here we return Var_{\pars}[E[R]]
+            return self.beta/(self.lmbda*(self.alpha - 1))
     
     def get_sampled_moments(self, which_moment, num_samples):
         '''
@@ -86,6 +90,16 @@ class BayesianGaussian(object):
         if which_moment == 2:
             # Here we return the second moment given parameters
             return (1/tau) + m**2
+
+    def sample_reward(self, num_samples = 1):
+        '''
+        Samples num_samples rewards from the reward model
+        using r ~ N(predictive_mean, predictive_var)
+        '''
+        mean = self.get_predictive_moment(which_moment = 1)
+        var  = self.get_predictive_moment(which_moment = 2) - mean**2
+
+        return np.random.normal(loc = mean, scale = np.sqrt(var), size = num_samples)
 
     def pack_parameters(self):
         pars = {'mu': self.mu,
@@ -113,9 +127,9 @@ class BayesianGaussian(object):
     @classmethod
     def default(cls):
         params = {'mu': 0,
-                  'lambda': 1,
+                  'lambda': 0.01,
                   'alpha': 2,
-                  'beta': 2,
+                  'beta': 5,
         }
         return cls(params)
     
@@ -156,7 +170,7 @@ class BayesianCategorical(object):
             return self.c/np.sum(self.c)
         
         if which_moment == 2:
-            # Return variance (vector) of multinomial predictive
+            # Return second moment (vector) of multinomial predictive
             normalized = self.c/np.sum(self.c)
             return ((normalized * (1-normalized))/(np.sum(self.c) + 1)) + normalized**2
     
@@ -174,6 +188,12 @@ class BayesianCategorical(object):
 
         if which_moment == 1:
             pass
+    
+    def sample_state(self, num_samples):
+        '''
+        Samples next state
+        '''
+        return np.random.choice(np.arange(self.out_size), size = num_samples, p = self.get_predictive_moment(which_moment = 1))
 
     def pack_parameters(self):
         pars = {'counts': self.c
@@ -200,6 +220,6 @@ class BayesianCategorical(object):
     @classmethod
     def default(cls, out_size):
         params = {'out_size': out_size,
-                  'c': [0.1]*out_size
+                  'c': [0.01]*out_size
         }
         return cls(params)

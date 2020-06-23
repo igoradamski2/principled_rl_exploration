@@ -11,13 +11,15 @@ from .models import *
 
 class Agent(object):
     
-    def __init__(self, gamma, compute_Q_every_step):
+    def __init__(self, gamma, compute_Q_every_step, logger):
 
         self.gamma                = gamma
         self.compute_Q_every_step = compute_Q_every_step
         
         self.memory_buffer        = []
         self.since_last_Q_compute = self.compute_Q_every_step
+
+        self.logger = logger
     
     def initialize_in_environment(self, env):
         '''
@@ -34,6 +36,9 @@ class Agent(object):
         self._env_actions   = deepcopy(env._actions) # superset of actions
 
         self.initialize_R_D_models()
+
+        self.observed_r = {pair:[] for pair in self._sa_pairs}
+        self.observed_d = {pair:[] for pair in self._sa_pairs}
 
         # Initialize random policy
         self.pi = np.ones((len(self._env_states), len(self._env_actions)))
@@ -54,11 +59,6 @@ class Agent(object):
         per each (state,action) pair
         Input: situation = [s, a, s_, r]
         '''
-        if not hasattr(self, 'observed_r'):
-            self.observed_r = {pair:[] for pair in self._sa_pairs}
-        if not hasattr(self, 'observed_d'):
-            self.observed_d = {pair:[] for pair in self._sa_pairs}
-        
         self.observed_r[(situation[0], situation[1])].append(situation[3])
         self.observed_d[(situation[0], situation[1])].append(situation[2])
     
@@ -72,58 +72,37 @@ class Agent(object):
 
         # Update rewards and dynamics model
         self.update_R_D()
-    
-    def risk_aware_policy_iteration(self, maxit):
+
+    def solve_for_Q(self, D, R):
         '''
-        Find Q and u given dynamics and rewards model contained in self
+        Solves for Q given models as dynamics and rewards by policy iteration
         '''
 
-        num_states  = len(self._env_states)
-        num_actions = len(self._env_actions)
+        pi = np.ones((len(self._env_states), len(self._env_actions)))
+        pi = pi/pi.sum(axis = 1, keepdims=True)
 
-        # Initialize policy to always pick 1st action
-        pi = np.zeros((num_states, num_actions))
-        pi[:,0] = 1
-        pi_ = deepcopy(pi)
+        converged = False
+        while not converged:
+            # Find D|pi and R|pi
+            D_pi = np.array([np.dot(D[s,:,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ijk,ik->ij', P, pi)
+            R_pi = np.array([np.dot(R[s,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ij,ij->i', R, pi)
 
-        for it in range(maxit):
+            # Solve for v and Q
+            v = np.linalg.solve(np.eye(*D_pi.shape) - self.gamma*D_pi, R_pi)
+            Q = R + self.gamma * np.einsum('ijk,j->ik', D, v) # equivalent to D[:,0,:]*v[0] + D[:,1,:]*v[1] + D[:,2,:]*v[2]
 
-            # First we will solve for optmial Q under policy pi, given expectation matrices
-            D = self.get_moment_dynamics_matrix(which_moment = 1)
-            R = self.get_moment_rewards_matrix(which_moment = 1)
-            
-            Q, pi_ = self.solve_for_Q(pi, D, R)
+            # Update policy
+            pi_  = np.zeros(pi.shape)
+            idx  = np.array(list(zip(np.arange(0,len(self._env_states),1),np.argmax(Q, axis = 1))))
 
-            # Now we solve the equation for the variance of return
-            u = self.solve_variance_return(Q, pi_)
+            pi_[idx[:,0], idx[:,1]] = 1
 
-            # Check convergence
-            if np.array_equal(pi, pi_):
-                break
+            if np.all(pi == pi_):
+                converged = True
             
             pi = pi_
-        
-        return Q, u
 
-    def solve_for_Q(self, pi, D, R):
-        '''
-        Solves for Q given models as dynamics and rewards
-        '''
-        # Find D|pi and R|pi
-        D_pi = np.array([np.dot(D[s,:,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ijk,ik->ij', P, pi)
-        R_pi = np.array([np.dot(R[s,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ij,ij->i', R, pi)
-        
-        # Solve for v and Q
-        v = np.linalg.solve(np.eye(*D_pi.shape) - self.gamma*D_pi, R_pi)
-        Q = R + self.gamma * np.einsum('ijk,j->ik', D, v) # equivalent to D[:,0,:]*v[0] + D[:,1,:]*v[1] + D[:,2,:]*v[2]
-        
-        # Update policy
-        pi_  = np.zeros(pi.shape)
-        idx  = np.array(list(zip(np.arange(0,len(self._env_states),1),np.argmax(Q, axis = 1))))
-        
-        pi_[idx[:,0], idx[:,1]] = 1
-
-        return Q, pi_
+        return Q, pi
     
     def solve_variance_return(self, Q, pi):
         '''
@@ -148,46 +127,6 @@ class Agent(object):
             ret_sq = ret_sq_
 
         return ret_sq - Q**2
-
-    def perform_policy_iteration(self, D, R, maxit):
-        '''
-        Finds optimal Q given dynamics and rewards
-        '''
-
-        num_states  = len(self._env_states)
-        num_actions = len(self._env_actions)
-
-        assert D.shape == (num_states, num_states, num_actions), "Dynamics D must be of shape (|S|, |S|, |A|)"
-        assert R.shape == (num_states, num_actions), "Rewards R must be of shape (|S|, |A|)"
-
-        # Initialize policy to always pick 1st action
-        pi = np.zeros((num_states, num_actions))
-        pi[:,0] = 1
-        pi_ = deepcopy(pi)
-
-        for it in range(maxit):
-
-            # Find D|pi and R|pi
-            D_pi = np.array([np.dot(D[s,:,:], pi_[s,:]) for s in range(pi_.shape[0])]) # maybe np.einsum('ijk,ik->ij', P, pi)
-            R_pi = np.array([np.dot(R[s,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ij,ij->i', R, pi)
-
-            # Solve for v and Q
-            v = np.linalg.solve(np.eye(*D_pi.shape) - self.gamma*D_pi, R_pi)
-            Q = R + self.gamma * np.einsum('ijk,j->ik', D, v) # equivalent to D[:,0,:]*v[0] + D[:,1,:]*v[1] + D[:,2,:]*v[2]
-
-            # Update policy
-            pi_  = np.zeros((num_states, num_actions))
-            idx  = np.array(list(zip(np.arange(0,num_states,1),np.argmax(Q, axis = 1))))
-
-            pi_[idx[:,0], idx[:,1]] = 1
-
-            # Check convergence
-            if np.array_equal(pi, pi_):
-                break
-            
-            pi = pi_
-        
-        return Q, pi
     
     def get_monte_carlo_Q(self, num_samples):
         '''
@@ -209,17 +148,73 @@ class Agent(object):
         R = self.get_sampled_moments_rewards_matrix(which_moment = 1, num_samples = num_samples)
 
         for it in range(num_samples):
-            Qs[it], _ = self.solve_for_Q(self.pi, D[it], R[it])
+            Qs[it], pi_ = self.solve_for_Q(D[it], R[it])
 
         Q_mean = np.mean(Qs, axis = 0)
         Q_var  = np.var(Qs, axis = 0)
 
+        self.pi = pi_
+
         return Q_mean, Q_var
+    
+    def get_predictive_Q(self):
+        ''' 
+        Computes E_{pars}[Q], assuming DAG
+        Inputs:
+            None
+        
+        Outputs:
+            Q : E_{pars}[Q]
+        '''
+        # Get predictive matrices
+        D = self.get_moment_dynamics_matrix(which_moment = 1)
+        R = self.get_moment_rewards_matrix(which_moment = 1)
+
+        Q, pi_ = self.solve_for_Q(D, R)
+
+        self.pi = pi_
+
+        return Q
+    
+    def get_predictive_u(self):
+        '''
+        Computes the epistemic uncertainty of return directly
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # Get all necessary matrices
+        var_E_R = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
+        Q_2     = self.Q**2
+        var_p   = self.get_moment_dynamics_matrix(which_moment = 2)
+        var_p   = var_p - self.get_moment_dynamics_matrix(which_moment = 1)**2
+        E_p_2   = self.get_moment_dynamics_matrix(which_moment = 1)**2
+
+        converged = False
+
+        u_ = np.zeros(self.Q.shape)
+        while not converged:
+            u           = var_E_R
+            second_term = 0
+            for s in self._env_states:
+                for a in self._env_actions:
+                    second_term += self.pi[s,a]*(Q_2[s,a]*var_p[:,s,:] + \
+                        u_[s,a]*(E_p_2[:,s,:] + var_p[:,s,:]))
+            
+            u += (self.gamma**2) * second_term
+
+            if np.max(np.abs(u_ - u)) < 0.01:
+                converged = True
+            
+            u_ = u
+        
+        return u
 
     def take_action(self, state):
 
         if self.since_last_Q_compute >= self.compute_Q_every_step:
-            self.get_Q_and_u()
+            self.get_Q()
+            self.get_u()
             self.since_last_Q_compute = 0
         
         a = self.make_decision(state)
@@ -227,6 +222,28 @@ class Agent(object):
         self.since_last_Q_compute += 1
 
         return a
+    
+    @property
+    def Q(self):
+        return self._Q
+
+    @property
+    def u(self):
+        return self._u
+
+    @u.setter
+    def u(self, matrix):
+        self.__on_change__('u', matrix)
+        self._u = matrix
+
+    @Q.setter
+    def Q(self, matrix):
+        self.__on_change__('Q', matrix)
+        self._Q = matrix
+    
+    def __on_change__(self, which, value):
+        if self.logger is not None:
+            self.logger.update(which, value)
 
     def initialize_R_D_models(self):
         '''
@@ -266,7 +283,13 @@ class Agent(object):
         '''
         raise NotImplementedError
 
-    def get_Q_and_u(self, *args, **kwargs):
+    def get_Q(self, *args, **kwargs):
+        '''
+        Must be implemented by the child environment
+        '''
+        raise NotImplementedError
+
+    def get_u(self, *args, **kwargs):
         '''
         Must be implemented by the child environment
         '''
@@ -424,22 +447,29 @@ class BayesianAgent(Agent):
         self.dyna_model   = params['dyna_model']
 
         # Initialize Q and u estimation methods
-        self.Q_and_u_method         = params['Q_and_u_method']
-        self.Q_and_u_method_params  = params['Q_and_u_method_params']
+        self.Q_method         = params['Q_method']
+        self.Q_method_params  = params['Q_method_params']
+
+        self.u_method         = params['u_method']
+        self.u_method_params  = params['u_method_params']
 
         # Initialize decision making methods
-        self.decision_making_method = params['decision_making_method']
+        self.decision_making_method        = params['decision_making_method']
+        self.decision_making_method_params = params['decision_making_method_params']
+
+        # Initialize logger 
+        if params['logger'] == True:
+            self.logger = Memory(params['logger_params'])
+        else:
+            self.logger = None
 
         if 'reward_params' in params.keys():
             self.reward_params = params['reward_params']
         
         if 'dyna_params' in params.keys():
             self.dyna_params = params['dyna_params']
-        
-        if 'logger' in params.keys():
-            self.logger = Memory()
     
-        super(BayesianAgent, self).__init__(params['gamma'], params['compute_Q_every_step'])
+        super(BayesianAgent, self).__init__(params['gamma'], params['compute_Q_every_step'], self.logger)
         
     def initialize_R_D_models(self):
         '''
@@ -484,9 +514,10 @@ class BayesianAgent(Agent):
         self._D_[key] = value
     
     def _on_change(self, which, key, value):
-        print('change!')
+
         if hasattr(self, 'logger'):
-            self.logger.update(which, key, value)
+            #self.logger.update(which, key, value)
+            pass
         else:
             pass
     
@@ -502,32 +533,14 @@ class BayesianAgent(Agent):
             for pair in self._sa_pairs:
                 if self.observed_r[pair]:
                     self.R_[pair].update(self.observed_r[pair])
+                    
+                    # This fires the decorator
+                    self.R_[pair] = self.R_[pair]
                 if self.observed_d[pair]:
                     self.D_[pair].update(self.observed_d[pair])
 
-    def sample_R_and_D_matrices(self, num_samples):
-        '''
-        Samples num_samples matrices for the reward and distribution
-
-        Inputs: num_samples : int
-                R_ : dictionary of reward models (dict)
-                D_ : dictionary of dynamics models (dict)
-
-        Return: E[R] : np.array of dimension (num_samples, |S|, |A|)
-                D    : np.array of dimension (num_samples, |S|, |S|, |A|)
-        '''
-        # First sample E[R] matrix
-        curr_R_ = deepcopy(self.R_)
-
-        R_matrix = np.zeros((num_samples, len(self._env_states), len(self._env_actions)))
-        for pair in curr_R_.keys():
-            model = curr_R_[pair]
-            R_matrix[:, pair[0], pair[1]] = 1
-        
-        # Second sample D matrix
-        D_matrix = np.ones((num_samples, len(self._env_states), len(self._env_states), len(self._env_actions)))
-
-        return R_matrix, D_matrix
+                    # This fires the decorator
+                    self.D_[pair] = self.D_[pair]
     
     def get_moment_rewards_matrix(self, which_moment):
         '''
@@ -593,18 +606,28 @@ class BayesianAgent(Agent):
 
         return D_matrix
     
-    def get_Q_and_u(self):
+    def get_Q(self):
         '''
-        Populates the agent class with Q and u estimations
+        Populates the agent class with Q estimation
         '''
-        if self.Q_and_u_method == 'monte_carlo':
-            self.Q, self.u = self.get_monte_carlo_Q(self.Q_and_u_method_params)
+        if self.Q_method == 'monte_carlo':
+            self.Q, self.u = self.get_monte_carlo_Q(self.Q_method_params)
         
+        if self.Q_method == 'predictive':
+            self.Q = self.get_predictive_Q()
+    
+    def get_u(self):
+        '''
+        Populates agent class with u estimation (epistemic uncertainty of return)
+        '''
+        if self.u_method == 'predictive':
+            self.u = self.get_predictive_u()
+
     def make_decision(self, state):
         '''
         Makes a decision in the current state, given decision making method
         '''
-        if self.decision_making_method == 'SOSS':
+        if self.decision_making_method == 'SOSS': # this stands for Stochastic Optimal Strategy Search
             # Get the list of actions in this state
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
             p_a     = np.ones(len(actions)) 
@@ -623,19 +646,126 @@ class BayesianAgent(Agent):
             # Sample from policy
             action = np.random.choice(a=actions, size=1, p=p_a)
         
+        if self.decision_making_method == 'TS':
+            # Get the list of actions in this state
+            actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+            Q_a     = np.zeros(len(actions))
+
+            for a in actions:
+                Q_a[a] = self.Q[state, a] + stats.norm.rvs(size = 1) * np.sqrt(self.u[state, a])
+            
+            action = np.argmax(Q_a)
+            
+        if self.decision_making_method == 'UCB':
+            action = np.argmax(self.Q[state,:] + self.decision_making_method_params * self.u[state,:])  
+
+        if self.decision_making_method == 'MC1-KG':
+            # First get actions available in this state
+            actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+            kg_return = np.zeros(len(actions))
+            for a in actions:
+                # Step 1: Remember the previous mean reward and models
+                kg_return[a] = self.R_[(state, a)].get_predictive_moment(which_moment = 1)
+                old_R        = deepcopy(self.R_[(state, a)])
+                old_D        = deepcopy(self.D_[(state, a)])
+
+                # Step 1.5: Sample new reward and update models
+                r      = self.R_[(state, a)].sample_reward(num_samples = 1)
+                self.R_[(state, a)].update(self.observed_r[(state, a)] + [r])
+
+                # Step 2: Sample new transition and update models
+                s      = self.D_[(state, a)].sample_state(num_samples = 1)
+                self.D_[(state, a)].update(self.observed_d[(state, a)] + [s])
+
+                # Step 3: Update Q
+                self.get_Q()
+
+                kg_return[a] += self.gamma * np.max(self.Q[s, :])
+
+                # Reset models to the state before simulation
+                self.R_[(state, a)] = deepcopy(old_R)
+                self.D_[(state, a)] = deepcopy(old_D)
+            
+            action = np.argmax(kg_return)
+        
+        if self.decision_making_method == 'MCN-KG':
+            
+            actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+            kg_return = np.zeros(len(actions))
+            
+            old_R = deepcopy(self._R_)
+            old_D = deepcopy(self._D_)
+
+            for a in actions:
+                now_s = state
+                now_a = a
+                for i in range(self.decision_making_method_params - 1):
+
+                    kg_return[a] += (self.gamma**i) * self.R_[(now_s, now_a)].get_predictive_moment(which_moment = 1)
+
+                    # Step 1.5: Sample new reward and update models
+                    r      = self.R_[(now_s, now_a)].sample_reward(num_samples = 1)
+                    self.R_[(now_s, now_a)].update(self.observed_r[(now_s, now_a)] + [r])
+
+                    # Step 2: Sample new transition and update models
+                    s_      = self.D_[(now_s, now_a)].sample_state(num_samples = 1)
+                    self.D_[(now_s, now_a)].update(self.observed_d[(now_s, now_a)] + [s_])
+
+                    # Step 3: Update Q
+                    self.get_Q()
+
+                    new_action = int(np.argmax(kg_return + (self.gamma**(i+1)) * np.max(self.Q[s_, :])))
+
+                    now_s = int(s_)
+                    now_a = int(new_action)
+                
+                kg_return[a] += (self.gamma**self.decision_making_method_params)*np.max(self.Q[now_s, :])
+
+                # Reset models to the state before simulation
+                self._R_ = deepcopy(old_R)
+                self._D_ = deepcopy(old_D)
+
+            action = np.argmax(kg_return)
+        
+        # Update policy
+        self.pi[state, :] = 0
+        self.pi[state, action] = 1
+        
         return int(action)
+    
+    def compute_entire_policy(self):
+        '''
+        Populates the pi matrix with the most current policy
+        '''
+        for state in self._env_states:
+            _ = self.make_decision(state)
+        
+    def get_cumulative_reward(self):
+        '''
+        Returns the cumulative reward obtained so far
+        '''
+        return np.sum([situation[-1] for situation in self.memory_buffer])
 
     @classmethod
-    def default(cls):
+    def default(cls, **kwargs):
         params = {
             'reward_model': 'BayesianGaussian',
             'dyna_model': 'BayesianCategorical',
-            'gamma': 0.9,
-            'Q_and_u_method': 'monte_carlo',
-            'Q_and_u_method_params': 20,
-            'decision_making_method': 'SOSS', # this stands for Stochastic Optimal Strategy Search
+            'gamma': 0.95,
+            'Q_method': 'monte_carlo',
+            'u_method': None,
+            'Q_method_params': 20,
+            'u_method_params': None,
+            'decision_making_method': 'MCN-KG',
+            'decision_making_method_params': 2, 
             'compute_Q_every_step': 1,
+            'logger': True,
+            'logger_params': ['compute_pi']
         }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
+            
         return cls(params)
         
     
