@@ -20,6 +20,9 @@ class Agent(object):
         self.since_last_Q_compute = self.compute_Q_every_step
 
         self.logger = logger
+        
+        if logger is not None:
+            self.logger_params = logger.memory_params
     
     def initialize_in_environment(self, env):
         '''
@@ -148,12 +151,10 @@ class Agent(object):
         R = self.get_sampled_moments_rewards_matrix(which_moment = 1, num_samples = num_samples)
 
         for it in range(num_samples):
-            Qs[it], pi_ = self.solve_for_Q(D[it], R[it])
+            Qs[it], _ = self.solve_for_Q(D[it], R[it])
 
         Q_mean = np.mean(Qs, axis = 0)
         Q_var  = np.var(Qs, axis = 0)
-
-        self.pi = pi_
 
         return Q_mean, Q_var
     
@@ -192,6 +193,7 @@ class Agent(object):
 
         converged = False
 
+        self.pi = np.ones((len(self._env_states), len(self._env_actions)))
         u_ = np.zeros(self.Q.shape)
         while not converged:
             u           = var_E_R
@@ -209,16 +211,71 @@ class Agent(object):
             u_ = u
         
         return u
+    
+    def get_predictive_reduction_u(self, state):
+        '''
+        Computes the reduction in predictive uncertainty from a given state
+
+        It uses the formula for predictive u
+        '''
+        # Available actions
+        actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+        # Firstly populate all necessary vectors
+        red_var_1 = np.zeros(len(actions))
+        red_var_2 = np.zeros((len(self._env_states), len(actions)))
+        red_var_3 = np.zeros(len(actions))
+        
+        for a in actions:
+            copy_R = deepcopy(self._R_)
+            copy_D = deepcopy(self._D_)
+
+            red_var_1[a] = copy_R[(state, a)].get_predictive_moment('epistemic_variance')
+            copy_R[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+
+            red_var_1[a] -= copy_R[(state, a)].get_predictive_moment('epistemic_variance')
+
+            red_var_2[:, a] = copy_D[(state, a)].get_predictive_moment('epistemic_variance')
+            red_var_3[a]    = copy_D[(state, a)].get_predictive_moment(1)[state]**2
+            
+            copy_D[(state, a)].update(self.observed_d[(state, a)] + [copy_D[(state, a)].get_most_probable_outcome()])
+
+            red_var_2[:, a] -= copy_D[(state, a)].get_predictive_moment('epistemic_variance')
+            red_var_3[a]    -= copy_D[(state, a)].get_predictive_moment(1)[state]**2
+
+        if self.Q is None:
+            self.get_Q()
+
+        u_red = red_var_1
+        
+        self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        for s in self._env_states:
+            for a in self._env_actions:
+                u_red += (self.gamma**2)*self.pi[s,a]*(self.Q[s,a]**2)*red_var_2[s, :]
+        
+        u_red /= (1 - (self.gamma**2)*(red_var_2[state, :] + red_var_3))
+
+        return u_red 
 
     def take_action(self, state):
+        '''
+        Function returning action in a given state
+
+        Works in two modes, either computes the entire policy and 
+        samples from it or just computes action|state
+        '''
 
         if self.since_last_Q_compute >= self.compute_Q_every_step:
             self.get_Q()
             self.get_u()
             self.since_last_Q_compute = 0
-        
-        a = self.make_decision(state)
-        
+
+        if 'pi' in self.logger_params:
+            self.compute_entire_policy()
+            a = int(np.where(self.pi[state,:] == 1)[0])
+        else:
+            a = self.make_decision(state)
+
         self.since_last_Q_compute += 1
 
         return a
@@ -230,6 +287,10 @@ class Agent(object):
     @property
     def u(self):
         return self._u
+    
+    @property
+    def pi(self):
+        return self._pi
 
     @u.setter
     def u(self, matrix):
@@ -241,9 +302,27 @@ class Agent(object):
         self.__on_change__('Q', matrix)
         self._Q = matrix
     
+    @pi.setter
+    def pi(self, matrix):
+        self.__on_change__('pi', matrix)
+        self._pi = matrix
+    
     def __on_change__(self, which, value):
         if self.logger is not None:
             self.logger.update(which, value)
+    
+    def compute_entire_policy(self):
+        '''
+        Populates the pi matrix with the most current deterministic policy
+
+        Relies on make_decision routine implemented by Child
+        '''
+        pi = np.zeros((len(self._env_states), len(self._env_actions)))
+        for state in self._env_states:
+            action = self.make_decision(state)
+            pi[state, action] = 1
+        
+        self.pi = pi
 
     def initialize_R_D_models(self):
         '''
@@ -303,6 +382,7 @@ class Agent(object):
       
 
 class KDEAgent(Agent):
+
 
     def __init__(self, params):
         '''
@@ -429,6 +509,92 @@ class KDEAgent(Agent):
         }
         return cls(params)
 
+class KGAgent(Agent):
+
+    def __init__(self, params):
+        '''
+        Initializes a simple Knowledge Gradient agent
+
+        This Agent can ONLY play in the MAB setting
+        '''
+
+        self.reward_model = params['reward_model']
+        self.dyna_model   = params['dyna_model']
+
+        # Initialize name
+        self.__name__ = params['name']
+
+        if 'reward_params' in params.keys():
+            self.reward_params = params['reward_params']
+        
+        if 'dyna_params' in params.keys():
+            self.dyna_params = params['dyna_params']
+    
+        super(BayesianAgent, self).__init__(params['gamma'], 0, None)
+        
+    def initialize_R_D_models(self):
+        '''
+        Initializes R and D models.
+        Agent must be first initialized in environment.
+        '''
+        self._R_ = {}
+        self._D_ = {}
+
+        reward_class = getattr(importlib.import_module(".models", package='src'), self.reward_model)
+        dyna_class = getattr(importlib.import_module(".models", package='src'), self.dyna_model)
+
+        for pair in self._sa_pairs:
+            # Rewards
+            if hasattr(self, 'reward_params'):
+                self.R_[pair] = reward_class(self.reward_params)
+            else:
+                self.R_[pair] = reward_class.default()
+
+            # Dynamics
+            if hasattr(self, 'dyna_params'):
+                self.D_[pair] = dyna_class(self.dyna_params)
+            else:
+                self.D_[pair] = dyna_class.default(len(self._env_states))
+    
+    def update_R_D(self):
+        '''
+        Updates the reward distribution according to the latest self.observed_r
+        Returns: R_ the distribution of rewards model
+        '''
+
+        if not hasattr(self, '_R_') or not hasattr(self, '_D_'):
+            NotImplementedError("Agent not initialized in environment")
+        else:
+            for pair in self._sa_pairs:
+                if self.observed_r[pair]:
+                    self.R_[pair].update(self.observed_r[pair])
+                    
+                    # This fires the decorator
+                    self.R_[pair] = self.R_[pair]
+                if self.observed_d[pair]:
+                    self.D_[pair].update(self.observed_d[pair])
+
+                    # This fires the decorator
+                    self.D_[pair] = self.D_[pair]
+    
+    def get_Q(self):
+        '''
+        Populates the agent class with Q estimation
+        '''
+        pass
+    
+    def get_u(self):
+        '''
+        Populates agent class with u estimation (epistemic uncertainty of return)
+        '''
+        pass
+
+    def make_decision(self, state):
+        '''
+        Makes a decision in the current state using the KG method
+        '''
+        pass
+
 class BayesianAgent(Agent):
     
     def __init__(self, params):
@@ -456,6 +622,9 @@ class BayesianAgent(Agent):
         # Initialize decision making methods
         self.decision_making_method        = params['decision_making_method']
         self.decision_making_method_params = params['decision_making_method_params']
+
+        # Initialize name
+        self.__name__ = params['name']
 
         # Initialize logger 
         if params['logger'] == True:
@@ -646,6 +815,7 @@ class BayesianAgent(Agent):
             # Sample from policy
             action = np.random.choice(a=actions, size=1, p=p_a)
         
+
         if self.decision_making_method == 'TS':
             # Get the list of actions in this state
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
@@ -656,8 +826,27 @@ class BayesianAgent(Agent):
             
             action = np.argmax(Q_a)
             
+
         if self.decision_making_method == 'UCB':
-            action = np.argmax(self.Q[state,:] + self.decision_making_method_params * self.u[state,:])  
+            action = np.argmax(self.Q[state,:] + self.decision_making_method_params * self.u[state,:])
+
+
+        if self.decision_making_method == 'GKG1':
+            # First get actions available in this state
+            actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+            tilda_u     = self.get_predictive_reduction_u(state)
+
+            influence   = np.zeros(len(actions))
+            for a in actions:
+                influence[a] = -np.abs((self.Q[state, a] - np.max(np.delete(self.Q[state, :], a)))/tilda_u[a])
+
+            f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
+
+            kg          = f_influence * tilda_u
+
+            action      = np.argmax(kg)  
+
 
         if self.decision_making_method == 'MC1-KG':
             # First get actions available in this state
@@ -689,6 +878,7 @@ class BayesianAgent(Agent):
             
             action = np.argmax(kg_return)
         
+
         if self.decision_making_method == 'MCN-KG':
             
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
@@ -733,13 +923,6 @@ class BayesianAgent(Agent):
         self.pi[state, action] = 1
         
         return int(action)
-    
-    def compute_entire_policy(self):
-        '''
-        Populates the pi matrix with the most current policy
-        '''
-        for state in self._env_states:
-            _ = self.make_decision(state)
         
     def get_cumulative_reward(self):
         '''
@@ -761,7 +944,8 @@ class BayesianAgent(Agent):
             'decision_making_method_params': 2, 
             'compute_Q_every_step': 1,
             'logger': True,
-            'logger_params': ['compute_pi']
+            'logger_params': ['Q', 'u'],
+            'name': None,
         }
         for arg in kwargs.keys():
             params[arg] = kwargs[arg]

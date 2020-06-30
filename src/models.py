@@ -173,6 +173,11 @@ class BayesianCategorical(object):
             # Return second moment (vector) of multinomial predictive
             normalized = self.c/np.sum(self.c)
             return ((normalized * (1-normalized))/(np.sum(self.c) + 1)) + normalized**2
+        
+        if which_moment == 'epistemic_variance':
+            # Here we return Var_{\pars}[]
+            normalized = self.c/np.sum(self.c)
+            return ((normalized * (1-normalized))/(np.sum(self.c) + 1))
     
     def get_sampled_moments(self, which_moment, num_samples):
         '''
@@ -194,6 +199,14 @@ class BayesianCategorical(object):
         Samples next state
         '''
         return np.random.choice(np.arange(self.out_size), size = num_samples, p = self.get_predictive_moment(which_moment = 1))
+    
+    def get_most_probable_outcome(self):
+        '''
+        Outputs the mode of the distribtion, hence the most probable outcome
+
+        If there is no single mode, chooses the first one
+        '''
+        return np.argmax(self.get_predictive_moment(1))
 
     def pack_parameters(self):
         pars = {'counts': self.c

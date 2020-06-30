@@ -64,8 +64,14 @@ class Environment(object):
         # Initialize agent in environment
         agent.initialize_in_environment(self)
 
+        # Compute optimal behaviour in environment
+        self.get_true_Q(agent.gamma)
+
         # Initialize regret
         regret = np.zeros(num_steps)
+
+        # Initialize % of times selecting best action
+        best_action = np.zeros(num_steps)
 
         for step in tqdm(range(num_steps)):
             
@@ -86,8 +92,14 @@ class Environment(object):
 
             # Calculate regret
             regret[step] = (self.oracle_agent() - agent.get_cumulative_reward())
+
+            # Calculate % of times selecting best action
+            best_action[step] = 1 if a == int(np.where(self.optimal_pi[s, :] == 1)[0]) else 0
         
-        return agent, regret
+        agent.regret      = regret
+        agent.best_action = np.cumsum(best_action)/(np.arange(len(best_action))+1)
+
+        return agent
 
     def get_dynamics(self):
         '''
@@ -140,6 +152,8 @@ class Environment(object):
         '''
         Populates the env with true Q value for a particular gamma
         Solves for Q given models as dynamics and rewards
+
+        D in shape |S| |S'| |A|
         '''
 
         D = self.get_true_dynamics_matrix()
@@ -301,7 +315,7 @@ class CorridorMAB(Environment):
         new_params = []
         for mu, var in self.reward_distrib_params:
             this_state = [[mu, var]]
-            for _ in range(self.num_bandits):
+            for _ in range(self.num_bandits - 1):
                 this_state.append([
                     mu - max(0, random.gauss(1,1)) - 1,
                     var + max(-var, random.gauss(0,2)) + 1,
@@ -382,14 +396,29 @@ class CorridorMAB(Environment):
         '''
         Returns the true dynamics matrix
         '''
-        D = np.zeros((self.num_rooms,self.num_rooms,self.num_bandits))
+        D = np.zeros((self.num_rooms,self.num_rooms,self.num_bandits+2))
+
+        dynamics = self.get_dynamics()
+
+        for state in self._states:
+            for action in self._actions:
+                next_s = dynamics(state, action)
+                D[state, next_s, action] = 1
+
         return D
     
     def get_true_rewards_matrix(self):
         '''
         Returns the true rewards matrix
         '''
-        R = np.array(self.reward_distrib_params)[:,0]
+        R = np.zeros((self.num_rooms, self.num_bandits + 2))
+        R[:, (-1,-2)] = self.move_penalty
+
+        for state in self._states:
+            for action in self._actions:
+                if action < self.num_bandits:
+                    R[state, action] = self.reward_distrib_params[state][action][0]
+        
         return R
     
     @classmethod
