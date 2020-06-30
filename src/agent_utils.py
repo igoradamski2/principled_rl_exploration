@@ -114,7 +114,7 @@ class SimplePlotter(object):
 
         return fig
     
-    def plot_Q_u(self, state_actions, *names):
+    def plot_Q_u(self, state_actions = None, *names):
         '''
         Plots the evolution of Q and u on plot grids
         for specified state-action pairs or for all if unspecified
@@ -124,9 +124,12 @@ class SimplePlotter(object):
         else:
             list_agents = names
         
-        num_states, num_actions = env.optimal_Q.shape
+        num_states, num_actions = self.env.optimal_Q.shape
 
-        figures = []
+        if state_actions is None:
+            state_actions = [(i,j) for i in range(num_states) for j in range(num_actions)]
+
+        figures = {}
 
         for agent_name in list_agents:
 
@@ -135,30 +138,34 @@ class SimplePlotter(object):
 
             fig.subplots_adjust(hspace = .3, wspace=.2)
 
+            fig.suptitle(agent_name, fontsize=25)
+
             axes = axes.ravel()
 
             agent = getattr(self, agent_name)
 
-            Q = agent.logger['Q']
-            u = agent.logger['u']
+            Q = np.array(agent.logger['Q'])
+            u = np.array(agent.logger['u'])
 
-            # 7 is states
-            # 6 is actions
-
-            for idx, sa in enumerate([(i,j) for i in range(num_states) for j in range(num_actions)]):
+            for idx, sa in enumerate(state_actions):
                 
                 axes[idx].plot(Q[:, sa[0], sa[1]], color = 'blue', label = 'Predicted Q')
                 axes[idx].fill_between(np.arange(Q.shape[0]),
-                                    Q[:, sa[0], sa[1]] - np.sqrt(u[:, sa[0], sa[1]]),
-                                    Q[:, sa[0], sa[1]] + np.sqrt(u[:, sa[0], sa[1]]),
+                                       Q[:, sa[0], sa[1]] - np.sqrt(u[:, sa[0], sa[1]]),
+                                       Q[:, sa[0], sa[1]] + np.sqrt(u[:, sa[0], sa[1]]),
                                             alpha=0.33, linestyle = 'None', color = 'blue')
-                axes[idx].set_title('$Q({}, {}$)'.format(sa[0], sa[1]))
+
+                axes[idx].set_title('$Q({}, {})$'.format(sa[0], sa[1]))
                 #axes[idx].x_label('Iteration') 
 
                 # Plot optmial Q for reference
-                axes[idx].axhline(y=env.optimal_Q[sa[0], sa[1]], color = 'red', label = 'Optimal Q')
+                axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], color = 'red', label = 'Optimal Q')
 
             plt.show()
+
+            figures[agent_name] = fig
+        
+        return figures
 
         
 

@@ -23,6 +23,7 @@ class Agent(object):
         
         if logger is not None:
             self.logger_params = logger.memory_params
+            self.log_this      = True
     
     def initialize_in_environment(self, env):
         '''
@@ -309,7 +310,8 @@ class Agent(object):
     
     def __on_change__(self, which, value):
         if self.logger is not None:
-            self.logger.update(which, value)
+            if self.log_this is not False:
+                self.logger.update(which, value)
     
     def compute_entire_policy(self):
         '''
@@ -775,7 +777,7 @@ class BayesianAgent(Agent):
 
         return D_matrix
     
-    def get_Q(self):
+    def get_Q(self, log_me = True):
         '''
         Populates the agent class with Q estimation
         '''
@@ -849,6 +851,8 @@ class BayesianAgent(Agent):
 
 
         if self.decision_making_method == 'MC1-KG':
+            
+            self.log_this = False
             # First get actions available in this state
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
 
@@ -876,10 +880,14 @@ class BayesianAgent(Agent):
                 self.R_[(state, a)] = deepcopy(old_R)
                 self.D_[(state, a)] = deepcopy(old_D)
             
+            self.log_this = True
+
             action = np.argmax(kg_return)
         
 
         if self.decision_making_method == 'MCN-KG':
+
+            self.log_this = False
             
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
             kg_return = np.zeros(len(actions))
@@ -915,6 +923,8 @@ class BayesianAgent(Agent):
                 # Reset models to the state before simulation
                 self._R_ = deepcopy(old_R)
                 self._D_ = deepcopy(old_D)
+
+            self.log_this = True
 
             action = np.argmax(kg_return)
         
