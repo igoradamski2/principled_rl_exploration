@@ -194,7 +194,7 @@ class Agent(object):
 
         converged = False
 
-        self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
         u_ = np.zeros(self.Q.shape)
         while not converged:
             u           = var_E_R
@@ -233,6 +233,7 @@ class Agent(object):
 
             red_var_1[a] = copy_R[(state, a)].get_predictive_moment('epistemic_variance')
             copy_R[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+            #copy_R[(state, a)].update(self.observed_r[(state, a)] + [np.mean(self.observed_r[(state, a)])])
 
             red_var_1[a] -= copy_R[(state, a)].get_predictive_moment('epistemic_variance')
 
@@ -244,17 +245,20 @@ class Agent(object):
             red_var_2[:, a] -= copy_D[(state, a)].get_predictive_moment('epistemic_variance')
             red_var_3[a]    -= copy_D[(state, a)].get_predictive_moment(1)[state]**2
 
+        self._R_ = deepcopy(copy_R)
+        self._D_ = deepcopy(copy_D)
+
         if self.Q is None:
             self.get_Q()
 
         u_red = red_var_1
         
-        self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        #pi = np.ones((len(self._env_states), len(self._env_actions)))
         for s in self._env_states:
             for a in self._env_actions:
                 u_red += (self.gamma**2)*self.pi[s,a]*(self.Q[s,a]**2)*red_var_2[s, :]
         
-        u_red /= (1 - (self.gamma**2)*(red_var_2[state, :] + red_var_3))
+        u_red /= (1 - (self.gamma**2)*(red_var_2[state, :]))# + red_var_3))
 
         return u_red 
 
@@ -325,6 +329,23 @@ class Agent(object):
             pi[state, action] = 1
         
         self.pi = pi
+    
+    def get_state_frequencies(self):
+        '''
+        Returns 10 state visit frequencies 
+        '''
+        freqs = np.zeros((10, len(self._env_states)))
+
+        total_time = len(self.memory_buffer)
+        step       = int(total_time/10)
+
+        for i in range(10):
+            f    = np.zeros(len(self._env_states))
+            u, c = np.unique(np.array(self.memory_buffer)[:(i+1)*step, 0], return_counts = True)
+            f[u.astype(int)] = c
+            freqs[i, :] = f/np.sum(f)
+        
+        return freqs
 
     def initialize_R_D_models(self):
         '''
@@ -798,6 +819,17 @@ class BayesianAgent(Agent):
         '''
         Makes a decision in the current state, given decision making method
         '''
+
+        if self.decision_making_method == 'e-greedy': # epsilon-greedy
+            # Get the list of actions in this state
+            actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+            epsilon = self.decision_making_method_params
+            if np.random.choice([0,1], p = [epsilon, 1-epsilon]) == 1:
+                action = np.argmax(self.Q[state, :])
+            else:
+                action = np.random.choice(actions)
+
         if self.decision_making_method == 'SOSS': # this stands for Stochastic Optimal Strategy Search
             # Get the list of actions in this state
             actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])

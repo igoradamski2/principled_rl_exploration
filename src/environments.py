@@ -19,6 +19,9 @@ class Environment(object):
         # Get initial state
         self.s = self.get_initial_state()
 
+        # Get all state action pairs
+        self.get_all_state_action_pairs()
+
         # Set time to 0
         self.t = 0
     
@@ -434,5 +437,8 @@ class CorridorMAB(Environment):
         
         return cls(params)
 
-
+class MazeMAB(Environment):
+    '''
+    This environment will be a maze with bandits
+    '''
 
