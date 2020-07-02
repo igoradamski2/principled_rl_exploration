@@ -20,6 +20,8 @@ class Agent(object):
         self.since_last_Q_compute = self.compute_Q_every_step
 
         self.logger = logger
+
+        self.dp_maxit = 10000
         
         if logger is not None:
             self.logger_params = logger.memory_params
@@ -86,6 +88,7 @@ class Agent(object):
         pi = pi/pi.sum(axis = 1, keepdims=True)
 
         converged = False
+        it        = 0
         while not converged:
             # Find D|pi and R|pi
             D_pi = np.array([np.dot(D[s,:,:], pi[s,:]) for s in range(pi.shape[0])]) # maybe np.einsum('ijk,ik->ij', P, pi)
@@ -101,10 +104,11 @@ class Agent(object):
 
             pi_[idx[:,0], idx[:,1]] = 1
 
-            if np.all(pi == pi_):
+            if np.all(pi == pi_) or it >= self.dp_maxit:
                 converged = True
             
-            pi = pi_
+            pi  = pi_
+            it += 1
 
         return Q, pi
     
@@ -196,6 +200,8 @@ class Agent(object):
 
         #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
         u_ = np.zeros(self.Q.shape)
+
+        it  = 0  
         while not converged:
             u           = var_E_R
             second_term = 0
@@ -206,10 +212,11 @@ class Agent(object):
             
             u += (self.gamma**2) * second_term
 
-            if np.max(np.abs(u_ - u)) < 0.01:
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
             
-            u_ = u
+            u_  = u
+            it += 1 
         
         return u
     
