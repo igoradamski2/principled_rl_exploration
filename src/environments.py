@@ -4,6 +4,7 @@ import random
 import itertools
 from tqdm import tqdm
 from sys import stdout
+from scipy.stats import bernoulli
 
 from .distributions import Distribution
 
@@ -89,6 +90,9 @@ class Environment(object):
             # Update agent
             agent.update([s, a, s_, r])
 
+            if self.finish_condition():
+                self.reset()
+
             #print('I chose action {} in state {}'.format(a, s))
             #stdout.write('\nI chose action {} in state {}'.format(a, s))
             #stdout.flush()
@@ -141,6 +145,14 @@ class Environment(object):
             - populate self._sa_pairs with all possible state-action pairs (list of tuples)
         '''
         raise NotImplementedError
+    
+    def finish_condition(self):
+        '''
+        Must be implemented by the child environment
+
+        Returns True/False with respect to some episode terminating condition
+        '''
+        raise NotImplementedError
 
     def oracle_agent(self):
         '''
@@ -190,6 +202,47 @@ class Environment(object):
 
         self.optimal_Q  = Q
         self.optimal_pi = pi
+    
+
+    def get_true_variance_return(self, gamma):
+        '''
+        Populates the env with true variance of return value for a particular gamma,
+        for the OPTIMAL pi
+
+        D in shape |S| |S'| |A|
+        '''
+        if not hasattr(self, 'optimal_Q'):
+            self.get_true_Q(gamma)
+        
+        D  = self.get_true_dynamics_matrix().astype(float)
+        R  = self.get_true_rewards_matrix().astype(float)
+        R2 = self.get_true_sec_moment_rewards_matrix().astype(float)
+
+        Q  = self.optimal_Q.astype(float)
+        pi = self.optimal_pi.astype(float)
+
+        ret_sq = np.zeros((len(self._states), len(self._actions)))
+
+        converged = False
+        while not converged:
+            #first_term = np.einsum('ijk,j', D, 2 * gamma * np.einsum('ij,ij,ij->i', pi, R, Q))
+            #sec_term   = np.einsum('ijk,j', D, (gamma**2) * np.einsum('ij,ij->i', pi, ret_sq))
+            
+            #ret_sq_ = R2 + first_term + sec_term
+
+            ret_sq_ = deepcopy(R2)
+
+            for s_ in self._states:
+                for a_ in self._actions:
+                    ret_sq_ += pi[s_,a_]*(2*gamma*Q[s_,a_]*np.multiply(D[:,s_,:],R) + D[:,s_,:]*(gamma**2)*ret_sq[s_,a_])
+
+            if np.max(np.abs(ret_sq - ret_sq_)) < 0.01:
+                converged = True
+            
+            ret_sq = ret_sq_
+        
+        self.optimal_variance_return = ret_sq - Q**2
+
 
 class MultiArmedBandit(Environment):
 
@@ -275,13 +328,33 @@ class MultiArmedBandit(Environment):
         R = np.array(self.reward_distrib_params)[:,0]
         R = R.reshape(len(self._states), len(self._actions))
         return R
+    
+    def get_true_sec_moment_rewards_matrix(self):
+        '''
+        Returns the true second moment rewards matrix
+        '''
+        R1 = np.array(self.reward_distrib_params)[:,0]
+        R2 = np.array(self.reward_distrib_params)[:,1]
+
+        R  = R2 + R1**2 
+        R = R.reshape(len(self._states), len(self._actions))
+        return R
+        
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        return False
             
     @classmethod
-    def default(cls):
+    def default(cls, **kwargs):
         params = {'num_bandits': 10, 
                   'reward_distrib': ['normal'], 
                   'reward_distrib_params': [[1,1], [2,2], [3,0.5], [4,5], [8,2], [3,1], [10,2], [-1,5], [2,4], [9,0.5]]
         }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
         return cls(params)
 
 class CorridorMAB(Environment):
@@ -424,6 +497,26 @@ class CorridorMAB(Environment):
         
         return R
     
+    def get_true_sec_moment_rewards_matrix(self):
+        '''
+        Returns the true second moment rewards matrix
+        '''
+        R = np.zeros((self.num_rooms, self.num_bandits + 2))
+        R[:, (-1,-2)] = self.move_penalty**2
+
+        for state in self._states:
+            for action in self._actions:
+                if action < self.num_bandits:
+                    R[state, action] = self.reward_distrib_params[state][action][1] + self.reward_distrib_params[state][action][0]**2
+        
+        return R
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        return False
+    
     @classmethod
     def default(cls, **kwargs):
         params = {'num_rooms': 7,
@@ -441,4 +534,193 @@ class MazeMAB(Environment):
     '''
     This environment will be a maze with bandits
     '''
+    pass
+
+class ChainMDP(Environment):
+    '''
+    This is the environment from Osband
+    '''
+    def __init__(self, params):
+        '''
+        Initiates the environment
+
+        Inputs: params -> dict
+            must have attributes:
+                    'N': we form a NxN grid of states : int
+                    'cost': the cost the agent incurs by moving right : +float (POSITIVE)
+                    'final_reward': the reward the agent gets by moving right in rightmost state : list
+        '''
+
+        self.N            = params['N']
+        self.cost         = params['cost']
+        self.final_reward = params['final_reward']
+
+        # We need to set a mask for each of the actions
+        W = bernoulli.rvs(0.5, size=self.N**2)
+
+        #uncomment
+        W = np.zeros(self.N**2)
+
+        self.W = W
+
+        # Mount an environment object
+        super(ChainMDP, self).__init__()
+    
+    def get_dynamics(self):
+        '''
+        Returns a function D:(s,a) -> next_state
+        '''
+        def D(s, a):
+
+            if self.W[s] == 0:
+                if a == 0:
+                    new_a = 0
+                if a == 1:
+                    new_a = 1
+            
+            if self.W[s] == 1:
+                if a == 0:
+                    new_a = 1
+                if a == 1:
+                    new_a = 0
+
+            a = new_a
+            if a == 0: # Go left
+
+                if s % self.N == 0: # This means we are at leftmost edge
+                    if int(np.floor(s/self.N)) == (self.N - 1): # This means we are at the bottom row
+                        return self.get_initial_state()
+                    else:
+                        return s + self.N # We move down at each step
+                else:
+                    if int(np.floor(s/self.N)) == (self.N - 1): # This means we are at the bottom row
+                        return self.get_initial_state()
+                    else:
+                        return s - 1 + self.N # We move down at each step
+
+            else:      # Go right
+
+                if s % self.N == (self.N - 1): # This means we are at rightmost edge
+                    if int(np.floor(s/self.N)) == (self.N - 1): # This means we are at the bottom row
+                        return self.get_initial_state()
+                    else:
+                        return s + self.N
+                else:
+                    if int(np.floor(s/self.N)) == (self.N - 1): # This means we are at the bottom row
+                        return self.get_initial_state()
+                    else:
+                        return s + 1 + self.N
+
+        return D
+
+    def get_rewards(self):
+        '''
+        Returns a function R:(s,a,s_) -> reward
+
+        We make the reward function depend only on s,a
+        '''
+        def R(s, a, s_):
+
+            if self.W[s] == 0:
+                if a == 0:
+                    new_a = 0
+                if a == 1:
+                    new_a = 1
+            
+            if self.W[s] == 1:
+                if a == 0:
+                    new_a = 1
+                if a == 1:
+                    new_a = 0
+
+            a = new_a
+            if a == 0: # Go left
+
+                return 0
+
+            else:      # Go right
+
+                if s % self.N == (self.N - 1): # This means we are at rightmost edge
+                    return self.final_reward
+                else:
+                    return -self.cost/self.N
+
+        return R
+
+    def get_initial_state(self):
+        return 0
+    
+    def get_all_state_action_pairs(self):
+        '''
+        Returns all possible state-action pairs
+            - populate self._states with all state numbers (np.array)
+            - populate self._actions with all action numbers (np.array)
+            - populate self._sa_pairs with all possible state-action pairs (list of tuples)
+        '''
+        self._states   = np.arange(self.N**2)
+        self._actions  = np.arange(2)
+        self._sa_pairs = [(s,a) for s,a in list(itertools.product(self._states, self._actions))]
+
+    def oracle_agent(self):
+        '''
+        Returns the cumulative reward of the oracle agent
+        at time self.t
+        '''
+        comp_eps = np.floor(self.t/self.N)
+        return comp_eps * (self.final_reward - self.cost) - ((self.t - (comp_eps*self.N)) * (self.cost/self.N))
+        
+    
+    def get_true_dynamics_matrix(self):
+        '''
+        Returns the true dynamics matrix
+        '''
+        D = np.zeros((self.N**2, self.N**2, 2))
+
+        dynamics = self.get_dynamics()
+
+        for state in self._states:
+            for action in self._actions:
+                next_s = dynamics(state, action)
+                D[state, next_s, action] = 1
+
+        return D
+    
+    def get_true_rewards_matrix(self):
+        '''
+        Returns the true rewards matrix
+        '''
+        R = np.zeros((self.N**2, 2))
+
+        rewards = self.get_rewards()
+
+        for state in self._states:
+            for action in self._actions:
+                R[state, action] = rewards(state, action, 0)
+        
+        return R
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        if self.t == self.N:
+            return False
+        else:
+            return False
+    
+    @classmethod
+    def default(cls, **kwargs):
+        params = {'N': 5,
+                  'cost': 0.01,
+                  'final_reward': 1
+        }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
+        
+        return cls(params)
+
+        
+    
+
+
 
