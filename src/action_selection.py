@@ -12,13 +12,20 @@ class ActionSelector(object):
         func = getattr(self, self.method)
         return func(state)
 
+    def from_list(self, state):
+        assert hasattr(self.agent, 'action_list'), 'Agent must have action_list attribute'
+
+        action = self.agent.action_list[len(self.agent.memory_buffer)]
+
+        return action
+
     def random(self, state):
         '''
         Select action randomly
         '''
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
 
-        np.random.seed(self.agent.decision_making_method_params)
+        #np.random.seed(self.agent.decision_making_method_params)
         action = np.random.choice(actions)
 
         return action
@@ -30,7 +37,7 @@ class ActionSelector(object):
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
 
         epsilon = self.agent.decision_making_method_params
-        np.random.seed(int(1000*self.agent.decision_making_method_params))
+        #np.random.seed(int(1000*self.agent.decision_making_method_params))
 
         if np.random.choice([0,1], p = [epsilon, 1-epsilon]) == 1:
             action = np.argmax(self.agent.optimal_Q[state, :])
@@ -243,9 +250,10 @@ class ActionSelector(object):
         R = np.squeeze(self.agent.get_sampled_moments_rewards_matrix(which_moment = 1, num_samples = 1))
 
         # Solve for Q
-        Q, pi = self.agent.solve_for_Q(D, R)
+        Q, _ = self.agent.solve_for_Q(D, R)
 
         # Act greedily
         action = np.argmax(Q[state, :])
 
         return action
+    

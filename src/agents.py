@@ -223,7 +223,7 @@ class Agent(object):
         converged = False
         it = 0
         while not converged:
-            first_term = E_Q_E_R
+            first_term = deepcopy(E_Q_E_R)
             second_term = np.zeros((len(self._env_states), len(self._env_actions)))
             for s_ in self._env_states:
                 for a_ in self._env_actions:
@@ -240,7 +240,6 @@ class Agent(object):
         CovQ = first_term - np.einsum('ij,km->ijkm', self.Q, self.Q)
 
         return CovQ
-
 
     def get_predictive_u(self):
         '''
@@ -272,6 +271,58 @@ class Agent(object):
                         u_[s,a]*(E_p_2[:,s,:] + var_p[:,s,:]))
             
             u += (self.gamma**2) * second_term
+
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+                converged = True
+            
+            u_  = u
+            it += 1 
+        
+        return u
+    
+    def get_EUB_u(self):
+        '''
+        Computes the epistemic uncertainty of return
+        using our EUB bound approach
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # Get all necessary matrices
+        var_E_R = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
+        Q       = self.Q
+        var_p   = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
+        E_p     = self.get_moment_dynamics_matrix(which_moment = 1)
+        Cov_p   = self.get_dynamics_covariance_tensor()
+
+
+        converged = False
+
+        #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        u_ = np.zeros(self.Q.shape)
+
+        it  = 0
+        while not converged:
+            u           = var_E_R 
+            second_term = 0
+            bound_term  = 0
+            for s in self._env_states:
+                for a in self._env_actions:
+                    second_term += self.pi[s,a]*((Q[s,a]**2)*var_p[:,s,:] + \
+                        u_[s,a]*((E_p[:,s,:]**2) + var_p[:,s,:]))
+                    
+                    third_term   = 0 
+                    for s_ in self._env_states:
+                        for a_ in self._env_actions:
+                            if s == s_ or a == a_:
+                                continue
+                            third_term += np.sqrt(u_[s,a]*u[s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
+                                E_p[:,s,:]*E_p[:,s_,:]) + \
+                                    np.abs(Q[s,a]*Q[s_,a_]*Cov_p[s,s_,:,:])
+
+                    bound_term += third_term 
+
+            u += (self.gamma**2) * second_term + 2*(self.gamma**2)*bound_term
 
             if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
@@ -499,6 +550,12 @@ class Agent(object):
         raise NotImplementedError
 
     def get_sampled_moments_rewards_matrix(self, *args, **kwargs):
+        '''
+        Must be implemented by the child environment
+        '''
+        raise NotImplementedError
+    
+    def get_dynamics_covariance_tensor(self, *args, **kwargs):
         '''
         Must be implemented by the child environment
         '''
@@ -779,6 +836,9 @@ class BayesianAgent(Agent):
         
         if 'dyna_params' in params.keys():
             self.dyna_params = params['dyna_params']
+
+        if 'action_list' in params.keys():
+            self.action_list = params['action_list']
     
         super(BayesianAgent, self).__init__(params['gamma'], params['compute_Q_every_step'], self.logger)
         
@@ -917,7 +977,21 @@ class BayesianAgent(Agent):
 
         return D_matrix
     
-    def get_Q(self, log_me = True):
+    def get_dynamics_covariance_tensor(self):
+        '''
+        Gets the dynamics covariance tensor
+
+        Return: Covariance tensor of shape (|S|, |S|, |S|, |A|)
+        '''
+        Cov_tensor = np.zeros((len(self._env_states), len(self._env_states), len(self._env_states), len(self._env_actions)))
+        for pair in self._D_.keys():
+            for s1 in self._env_states:
+                for s2 in self._env_states:
+                    Cov_tensor[s1, s2, pair[0], pair[1]] = self._D_[pair].get_state_covariance(s1,s2)
+        
+        return Cov_tensor
+    
+    def get_Q(self):
         '''
         Populates the agent class with Q estimation
         '''
@@ -935,6 +1009,8 @@ class BayesianAgent(Agent):
             self.u = self.get_predictive_u()
         if self.u_method == 'UBE':
             self.u = self.get_UBE_u()
+        if self.u_method == 'EUB':
+            self.u = self.get_EUB_u()
 
     def make_decision(self, state):
         '''

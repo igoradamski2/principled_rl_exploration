@@ -4,6 +4,9 @@ import matplotlib.pyplot as plt
 import itertools
 import os
 
+#plt.rcParams['text.usetex'] = True
+#plt.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
+
 
 class Memory(object):
     '''
@@ -245,6 +248,89 @@ class SimplePlotter(object):
 
             plt.show()
     
+    def plot_Q_u_comparison(self, figsize = (12, 12)):
+        '''
+        Plots Q and u but also draws comparison to the monte_carlo agent
+        '''
+        list_agents = self.list_agents()
+        
+        assert 'monte_carlo' in list_agents, 'A monte carlo agent needs to be in agent list to draw comparison'
+
+        num_states, num_actions = self.env.optimal_Q.shape
+
+        state_actions = [(i,j) for i in range(num_states) for j in range(num_actions)]
+
+        figures = {}
+
+        monte_carlo_agent = getattr(self, 'monte_carlo')
+
+        u_mc = monte_carlo_agent.mean_us 
+
+        for agent_name in list_agents:
+
+            if agent_name == 'monte_carlo':
+                continue
+
+            fig, axes = plt.subplots(num_states, num_actions, figsize=figsize, \
+                                     facecolor='w', edgecolor='k')
+
+            fig.subplots_adjust(hspace = .3, wspace=.2)
+
+            fig.suptitle(agent_name + ' estimate', fontsize=25)
+
+            axes = axes.ravel()
+
+            agent = getattr(self, agent_name)
+
+            #Q = np.array(agent.logger['Q'])
+            #u = np.array(agent.logger['u'])
+
+            Q  = agent.mean_Qs 
+            u  = agent.mean_us
+
+            for idx, sa in enumerate(state_actions):
+                
+                axes[idx].plot(Q[:, sa[0], sa[1]], color = '#3138fb', label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$')
+                axes[idx].fill_between(np.arange(Q.shape[0]),
+                                       Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                       Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                            alpha=0.43, linestyle = 'None', color = '#3138fb',
+                                            label = r'Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')
+                
+                axes[idx].plot(Q[:, sa[0], sa[1]] - 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
+                              color = 'red', label = 'Monte Carlo uncertainty estimate using $10,000$ samples',
+                              linestyle = '--', alpha = 0.8)
+                axes[idx].plot(Q[:, sa[0], sa[1]] + 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
+                              color = 'red',
+                              linestyle = '--')
+                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
+
+                axes[idx].set_ylim(bottom = np.min(Q[:, sa[0], sa[1]] - 2.1*np.sqrt(u[:, sa[0], sa[1]])), 
+                                   top    = np.max(Q[:, sa[0], sa[1]] + 2.1*np.sqrt(u[:, sa[0], sa[1]])))
+                
+                if idx >= (len(state_actions) - num_actions):
+                    axes[idx].set_xlabel('t', fontsize = 16)
+
+                if idx % num_actions == 0:
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+
+                # Plot optmial Q for reference
+                #axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], color = 'red', label = 'Optimal Q')
+
+            handles, labels = axes[idx].get_legend_handles_labels()
+            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+
+            plt.tight_layout(rect=[0, 0.11, 1, 0.95])
+
+            figures[agent_name] = fig
+
+            fig.savefig(self.foldername + '/' + agent_name + '_Q')
+
+            plt.show()
+        
+        return figures
+
+
     def plot_state_freq(self, intervals = None, *names):
         '''
         Implement so that it shows in intervals instead of 10

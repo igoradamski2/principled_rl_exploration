@@ -37,6 +37,7 @@ class Environment(object):
         s_ = self.D(self.s, a)
 
         # Get reward
+        #np.random.seed(self.t)
         r = self.R(self.s, a, s_)
 
         # Set new state

@@ -194,6 +194,12 @@ class BayesianCategorical(object):
         if which_moment == 1:
             pass
     
+    def get_state_covariance(self, s1, s2):
+        '''
+        Returns the covariance between two states s1 and s2
+        '''
+        return  -(self.c[s1]*self.c[s2])/((np.sum(self.c)**2)*(np.sum(self.c)+1))
+
     def sample_state(self, num_samples):
         '''
         Samples next state
