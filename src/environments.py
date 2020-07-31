@@ -5,13 +5,14 @@ import itertools
 from tqdm import tqdm
 from sys import stdout
 from scipy.stats import bernoulli
+from time import time
 
 from .distributions import Distribution
 
 
 class Environment(object):
 
-    def __init__(self):
+    def __init__(self, seed = None):
         
         # Get dynamics and rewards
         self.D = self.get_dynamics()
@@ -25,6 +26,11 @@ class Environment(object):
 
         # Set time to 0
         self.t = 0
+
+        # Set seed?
+        # if not None then each timestep returns
+        # same rewards and transitions for different agents
+        self.seed = seed
     
     def step(self, a):
         '''
@@ -37,7 +43,9 @@ class Environment(object):
         s_ = self.D(self.s, a)
 
         # Get reward
-        #np.random.seed(self.t)
+        if self.seed is not None:
+            np.random.seed(self.t + self.seed)
+        
         r = self.R(self.s, a, s_)
 
         # Set new state
@@ -65,6 +73,9 @@ class Environment(object):
                  cumulative regret
         '''
         self.reset()
+
+        # Keep track of performance
+        self.elapsed_time_per_step = np.zeros(num_steps)
         
         # Initialize agent in environment
         agent.initialize_in_environment(self)
@@ -80,6 +91,8 @@ class Environment(object):
 
         for step in tqdm(range(num_steps)):
             
+            start_t = time()
+
             # Take an action
             a = agent.take_action(self.s)
 
@@ -103,6 +116,8 @@ class Environment(object):
 
             # Calculate % of times selecting best action
             best_action[step] = 1 if a == int(np.where(self.optimal_pi[s, :] == 1)[0]) else 0
+
+            self.elapsed_time_per_step[step] = time() - start_t
         
         agent.regret      = regret
         agent.best_action = np.cumsum(best_action)/(np.arange(len(best_action))+1)
@@ -268,7 +283,7 @@ class MultiArmedBandit(Environment):
         assert len(self.reward_distrib) == self.num_bandits, "Too few distributions specified for that number of bandits"
 
         # Mount an environment object
-        super(MultiArmedBandit, self).__init__()
+        super(MultiArmedBandit, self).__init__(params['seed'])
          
     def get_dynamics(self):
         '''
@@ -352,7 +367,8 @@ class MultiArmedBandit(Environment):
     def default(cls, **kwargs):
         params = {'num_bandits': 10, 
                   'reward_distrib': ['normal'], 
-                  'reward_distrib_params': [[1,1], [2,2], [3,0.5], [4,5], [8,2], [3,1], [10,2], [-1,5], [2,4], [9,0.5]]
+                  'reward_distrib_params': [[1,1], [2,2], [3,0.5], [4,5], [8,2], [3,1], [10,2], [-1,5], [2,4], [9,0.5]],
+                  'seed': None,
         }
         for arg in kwargs.keys():
             params[arg] = kwargs[arg]
@@ -525,6 +541,7 @@ class CorridorMAB(Environment):
                   'reward_distrib': ['normal'], 
                   'reward_distrib_params': [[-1,1], [-2,1], [-3,1], [-4,1], [-5,1], [-6,1], [10,1]],
                   'move_penalty': -20,
+                  'seed': None,
         }
         for arg in kwargs.keys():
             params[arg] = kwargs[arg]
@@ -713,7 +730,8 @@ class ChainMDP(Environment):
     def default(cls, **kwargs):
         params = {'N': 5,
                   'cost': 0.01,
-                  'final_reward': 1
+                  'final_reward': 1,
+                  'seed': None,
         }
         for arg in kwargs.keys():
             params[arg] = kwargs[arg]

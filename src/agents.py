@@ -862,7 +862,8 @@ class BayesianAgent(Agent):
 
             # Dynamics
             if hasattr(self, 'dyna_params'):
-                self.D_[pair] = dyna_class(self.dyna_params)
+                self.D_[pair] = dyna_class({'c': [self.dyna_params]*len(self._env_states),
+                                            'out_size': len(self._env_states)})
             else:
                 self.D_[pair] = dyna_class.default(len(self._env_states))
         

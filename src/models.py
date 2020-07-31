@@ -126,10 +126,11 @@ class BayesianGaussian(object):
     
     @classmethod
     def default(cls):
+        # This induces E[r] = 0 +- 10, Var[r] = 1 +- 1
         params = {'mu': 0,
-                  'lambda': 0.01,
+                  'lambda': 0.2,
                   'alpha': 2,
-                  'beta': 5,
+                  'beta': 2,
         }
         return cls(params)
     

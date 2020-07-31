@@ -75,28 +75,44 @@ class SimplePlotter(object):
         
         return agents
 
-    def run_experiments(self, steps, num_repeats):
+    def run_experiments(self, steps, num_repeats, fair_comparison = False):
         '''
         Runs num_repeats experiments for steps steps
         for each agent in the environment
         '''
+        actions_per_iter = np.zeros((num_repeats, steps))
+        if fair_comparison == True:
+            # Fair comparison samples a random set of actions
+            # for each iteration so that at all runs
+            # each agent makes the same actions
+            for i in range(num_repeats):
+                actions_per_iter[i, :] = np.random.choice(self.env._actions, size = steps)
+
         for agent_name in self.list_agents():
             
             regrets    = np.zeros((num_repeats, steps))
             best_a     = np.zeros((num_repeats, steps))
             state_freq = np.zeros((num_repeats, 10, len(self.env._states)))
+            step_time  = np.zeros((num_repeats, steps))
 
             Qs         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
             us         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
 
             for iteration in range(num_repeats):
+
                 agent = deepcopy(getattr(self, agent_name))
+                
+                agent.action_list = actions_per_iter[iteration, :]
+
+                if self.env.seed is not None:
+                    self.env.seed = iteration*1234
 
                 agent = self.env.play_episode(steps, agent)
 
                 regrets[iteration, :]       = agent.regret
                 best_a[iteration, :]        = agent.best_action
                 state_freq[iteration, :, :] = agent.get_state_frequencies()
+                step_time[iteration, :]     = self.env.elapsed_time_per_step
 
                 Qs[iteration, :, :, :]      = np.array(agent.logger['Q'])
                 if 'u' in agent.logger.keys():
@@ -110,6 +126,9 @@ class SimplePlotter(object):
 
             agent.mean_best_action = np.mean(best_a, axis = 0)
             agent.sd_best_action   = np.sqrt(np.var(best_a, axis = 0))
+
+            agent.mean_step_time   = np.mean(step_time, axis = 0)
+            agent.sd_step_time     = np.sqrt(np.var(step_time, axis = 0))
 
             agent.mean_Qs          = np.mean(Qs, axis = 0)
             agent.sd_Qs            = np.sqrt(np.var(Qs, axis = 0))
@@ -248,9 +267,11 @@ class SimplePlotter(object):
 
             plt.show()
     
-    def plot_Q_u_comparison(self, figsize = (12, 12)):
+    def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
+
+        Agents must be named monte_carlo, EUB, EUDV and UCB
         '''
         list_agents = self.list_agents()
         
@@ -265,6 +286,11 @@ class SimplePlotter(object):
         monte_carlo_agent = getattr(self, 'monte_carlo')
 
         u_mc = monte_carlo_agent.mean_us 
+
+        if color_codes is None:
+            color_codes = {'EUB': '#f30894',
+                           'EUDV': '#3138fb',
+                           'UBE': '#f23a14'} 
 
         for agent_name in list_agents:
 
@@ -294,7 +320,7 @@ class SimplePlotter(object):
                 axes[idx].fill_between(np.arange(Q.shape[0]),
                                        Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
                                        Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
-                                            alpha=0.43, linestyle = 'None', color = '#3138fb',
+                                            alpha=0.43, linestyle = 'None', color = color_codes[agent_name],
                                             label = r'Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')
                 
                 axes[idx].plot(Q[:, sa[0], sa[1]] - 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
@@ -315,12 +341,14 @@ class SimplePlotter(object):
                     axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
 
                 # Plot optmial Q for reference
-                #axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], color = 'red', label = 'Optimal Q')
+                axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], 
+                                  color = 'black', linestyle = '--', 
+                                  label = r'$Q^{*,\mathcal{W}}$', alpha = 0.7)
 
             handles, labels = axes[idx].get_legend_handles_labels()
             fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
 
-            plt.tight_layout(rect=[0, 0.11, 1, 0.95])
+            plt.tight_layout(rect=[0, 0.22, 1, 0.95])
 
             figures[agent_name] = fig
 
