@@ -90,10 +90,11 @@ class SimplePlotter(object):
 
         for agent_name in self.list_agents():
             
-            regrets    = np.zeros((num_repeats, steps))
-            best_a     = np.zeros((num_repeats, steps))
-            state_freq = np.zeros((num_repeats, 10, len(self.env._states)))
-            step_time  = np.zeros((num_repeats, steps))
+            regrets     = np.zeros((num_repeats, steps))
+            best_a      = np.zeros((num_repeats, steps))
+            state_freq  = np.zeros((num_repeats, 10, len(self.env._states)))
+            step_time   = np.zeros((num_repeats, steps))
+            first_t_opt = np.zeros(num_repeats)
 
             Qs         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
             us         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
@@ -114,6 +115,12 @@ class SimplePlotter(object):
                 state_freq[iteration, :, :] = agent.get_state_frequencies()
                 step_time[iteration, :]     = self.env.elapsed_time_per_step
 
+                where_1 = np.where(agent.is_pi_optimal == 1)[0]
+                if len(where_1) == 0:
+                    first_t_opt[iteration] = steps
+                else:
+                    first_t_opt[iteration]      = np.min(where_1)
+
                 Qs[iteration, :, :, :]      = np.array(agent.logger['Q'])
                 if 'u' in agent.logger.keys():
                     us[iteration, :, :, :]  = np.array(agent.logger['u'])
@@ -130,6 +137,9 @@ class SimplePlotter(object):
             agent.mean_step_time   = np.mean(step_time, axis = 0)
             agent.sd_step_time     = np.sqrt(np.var(step_time, axis = 0))
 
+            agent.mean_first_t_opt = np.mean(first_t_opt)
+            agent.sd_first_t_opt   = np.var(first_t_opt)
+
             agent.mean_Qs          = np.mean(Qs, axis = 0)
             agent.sd_Qs            = np.sqrt(np.var(Qs, axis = 0))
 
@@ -138,40 +148,47 @@ class SimplePlotter(object):
 
             setattr(self, agent_name, agent)
     
-    def plot_regret(self, *names):
+    def plot_regret(self, list_agents = None, color_codes = None, figsize = (12,8), title = None, legend_codes = None):
         '''
         Plots regret and % of best action
         '''
-        if len(names) == 0:
+        if list_agents is None:
             list_agents = self.list_agents()
-        else:
-            list_agents = names
         
-        fig    = plt.figure(figsize = (12,8))
+        fig    = plt.figure(figsize = figsize)
         ax_reg = fig.add_subplot(211)
         ax_ba  = fig.add_subplot(212)
 
+        fig.suptitle(title, fontsize=25)
+
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
-            ax_reg.plot(agent.mean_regret, label = agent_name)
+            ax_reg.plot(agent.mean_regret, label = legend_codes[agent_name],
+                        color = color_codes[agent_name])
             ax_reg.fill_between(np.arange(len(agent.mean_regret)),
                                 agent.mean_regret-agent.sd_regret,
                                 agent.mean_regret+agent.sd_regret,
-                                alpha=0.33, linestyle = 'dashed')
+                                alpha=0.33, linestyle = 'dashed',
+                                color = color_codes[agent_name])
             
-            ax_ba.plot(agent.mean_best_action, label = agent_name)
+            ax_ba.plot(agent.mean_best_action, label = legend_codes[agent_name],
+                       color = color_codes[agent_name])
             ax_ba.fill_between(np.arange(len(agent.mean_best_action)),
                                 agent.mean_best_action-agent.sd_best_action,
                                 agent.mean_best_action+agent.sd_best_action,
-                                alpha=0.33, linestyle = 'dashed')
+                                alpha=0.33, linestyle = 'dashed',
+                                color = color_codes[agent_name])
+            
+            ax_reg.axvline(x = agent.mean_first_t_opt,
+                           color = color_codes[agent_name])
         
-        ax_reg.set_title('Online regret')
-        ax_ba.set_title('% of time best action is chosen')
+        ax_reg.set_title('Online regret', fontsize = 16)
+        ax_ba.set_title('% of time best action is chosen', fontsize = 16)
 
-        ax_reg.legend()
-        ax_ba.legend()
+        ax_reg.legend(fontsize = 16)
+        ax_ba.legend(fontsize = 16)
 
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
 
         fig.savefig(self.foldername + '/regret')
         
@@ -202,7 +219,7 @@ class SimplePlotter(object):
         ax_reg.legend()
         ax_ba.legend()
 
-        plt.tight_layout()
+        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
 
         fig.savefig(self.foldername + '/regret_noerr')
         
@@ -267,7 +284,7 @@ class SimplePlotter(object):
 
             plt.show()
     
-    def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None):
+    def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
@@ -285,7 +302,7 @@ class SimplePlotter(object):
 
         monte_carlo_agent = getattr(self, 'monte_carlo')
 
-        u_mc = monte_carlo_agent.mean_us 
+        u_mc = monte_carlo_agent.mean_us[from_t:]
 
         if color_codes is None:
             color_codes = {'EUB': '#f30894',
@@ -311,8 +328,8 @@ class SimplePlotter(object):
             #Q = np.array(agent.logger['Q'])
             #u = np.array(agent.logger['u'])
 
-            Q  = agent.mean_Qs 
-            u  = agent.mean_us
+            Q  = agent.mean_Qs[from_t:] 
+            u  = agent.mean_us[from_t:]
 
             for idx, sa in enumerate(state_actions):
                 
@@ -331,9 +348,17 @@ class SimplePlotter(object):
                               linestyle = '--')
                 axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
 
-                axes[idx].set_ylim(bottom = np.min(Q[:, sa[0], sa[1]] - 2.1*np.sqrt(u[:, sa[0], sa[1]])), 
-                                   top    = np.max(Q[:, sa[0], sa[1]] + 2.1*np.sqrt(u[:, sa[0], sa[1]])))
+                bottom = np.min(Q[:, sa[0], sa[1]] - 2.1*np.sqrt(u[:, sa[0], sa[1]]))
+                top    = np.max(Q[:, sa[0], sa[1]] + 2.1*np.sqrt(u[:, sa[0], sa[1]]))
                 
+                bottom = min(bottom, self.env.optimal_Q[sa[0], sa[1]] - 10)
+                top    = max(top, self.env.optimal_Q[sa[0], sa[1]] + 10)
+
+                axes[idx].set_ylim(bottom = bottom, 
+                                   top    = top)
+
+                axes[idx].set_xticklabels(np.arange(Q.shape[0]) + from_t)
+
                 if idx >= (len(state_actions) - num_actions):
                     axes[idx].set_xlabel('t', fontsize = 16)
 
@@ -357,6 +382,95 @@ class SimplePlotter(object):
             plt.show()
         
         return figures
+
+    def plot_Q_u_comparison_one_plot(self, figsize = (12, 12), color_codes = None, from_t = 0, list_agents = None):
+        '''
+        Plots Q and u but also draws comparison to the monte_carlo agent
+
+        Agents must be named monte_carlo, EUB, EUDV and UCB
+        '''
+        if list_agents is None:
+            list_agents = self.list_agents()
+
+        num_states, num_actions = self.env.optimal_Q.shape
+
+        state_actions = [(i,j) for i in range(num_states) for j in range(num_actions)]
+
+        if color_codes is None:
+            color_codes = {'EUB': '#f30894',
+                           'EUDV': '#3138fb',
+                           'UBE': '#f23a14',
+                           'monte_carlo': 'red'}
+
+        agent_names = {'EUB': 'EUB',
+                       'EUDV': 'EUDV',
+                       'UBE': 'UBE',
+                       'monte_carlo': 'Monte Carlo'} 
+
+        fig, axes = plt.subplots(num_states, num_actions, figsize=figsize, \
+                                     facecolor='w', edgecolor='k')
+
+        fig.subplots_adjust(hspace = .3, wspace=.2)
+
+        fig.suptitle('Uncertainty estimates comparison', fontsize=25)
+
+        axes = axes.ravel()
+
+        for idx, sa in enumerate(state_actions):
+            
+            i = 0
+            for agent_name in list_agents:
+
+                agent = getattr(self, agent_name)
+
+                Q  = agent.mean_Qs[from_t:] 
+                u  = agent.mean_us[from_t:]
+
+                if i == 0:
+                    axes[idx].plot(Q[:, sa[0], sa[1]], color = '#3138fb', label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$',
+                                   alpha = 0.4)
+                    # Plot optmial Q for reference
+                    axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], 
+                                      color = 'black', linestyle = '--', 
+                                      label = r'$Q^{*,\mathcal{W}}$', alpha = 0.8)                
+                
+                axes[idx].plot(Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]), 
+                                linestyle = 'dashdot', color = color_codes[agent_name],
+                                label = agent_names[agent_name] + ' estimate of ' + r'Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')                
+                
+                axes[idx].plot(Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]), 
+                                linestyle = 'dashdot', color = color_codes[agent_name])
+
+                axes[idx].fill_between(np.arange(Q.shape[0]),
+                                       Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                       Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                            alpha=0.43, linestyle = 'None', color = color_codes[agent_name])
+
+                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
+
+                #labels = axes[idx].get_xtickslabels()
+                #print(labels)
+                #axes[idx].set_xticklabels(labels + from_t)
+
+                if idx >= (len(state_actions) - num_actions):
+                    axes[idx].set_xlabel('t', fontsize = 16)
+                
+                if idx % num_actions == 0:
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+                
+                i += 1
+
+
+        handles, labels = axes[idx].get_legend_handles_labels()
+        fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+
+        plt.tight_layout(rect=[0, 0.22, 1, 0.95])
+
+        fig.savefig(self.foldername + '/' + agent_name + '_Q')
+
+        plt.show()
+        
+        return fig
 
 
     def plot_state_freq(self, intervals = None, *names):

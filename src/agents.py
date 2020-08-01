@@ -372,7 +372,43 @@ class Agent(object):
             it += 1
         
         return u
-            
+
+    def get_reduction_u(self, state):
+        '''
+        Computes the naive estimate of the reduction in uncertainty
+        '''
+
+        if self.u_method == 'predictive' and self.red_method == 'fast':
+            return self.get_predictive_reduction_u(state)
+        
+        # Available actions
+        actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+        new_uncert = np.zeros(len(actions))
+
+        old_u = self.u
+
+        for a in actions:
+            for s_ in self._env_states:
+
+                copy_R = deepcopy(self._R_)
+                copy_D = deepcopy(self._D_)
+
+                self._R_[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+
+                self._D_[(state, a)].update(self.observed_d[(state, a)] + [s_])
+
+                # Now recompute u
+                self.get_u()
+
+                new_uncert[a] += copy_D[(state, a)].get_predictive_moment(1)[s_] * self.u[state, a]
+
+                # Reset the models
+                self._R_ = deepcopy(copy_R)
+                self._D_ = deepcopy(copy_D)
+        
+        return old_u[state, :] - new_uncert
+
     
     def get_predictive_reduction_u(self, state):
         '''
@@ -406,8 +442,8 @@ class Agent(object):
             red_var_2[:, a] -= copy_D[(state, a)].get_predictive_moment('epistemic_variance')
             red_var_3[a]    -= copy_D[(state, a)].get_predictive_moment(1)[state]**2
 
-        self._R_ = deepcopy(copy_R)
-        self._D_ = deepcopy(copy_D)
+        #self._R_ = deepcopy(copy_R)
+        #self._D_ = deepcopy(copy_D)
 
         if self.Q is None:
             self.get_Q()
@@ -498,8 +534,13 @@ class Agent(object):
         '''
         Returns the greedy policy of the agent
         '''
-        pass
-    
+        pi = np.zeros((len(self._env_states), len(self._env_actions)))
+        for state in self._env_states:
+            action = np.argmax(self.Q[state,:])
+            pi[state, action] = 1
+        
+        self.greedy_pi = pi
+        
     def get_state_frequencies(self):
         '''
         Returns 10 state visit frequencies 
@@ -825,6 +866,8 @@ class BayesianAgent(Agent):
         # Initialize name
         self.__name__ = params['name']
 
+        self.red_method = params['red_method']
+
         # Initialize logger 
         if params['logger'] == True:
             self.logger = Memory(params['logger_params'])
@@ -1044,6 +1087,7 @@ class BayesianAgent(Agent):
             'logger': True,
             'logger_params': ['Q', 'u'],
             'name': None,
+            'red_method': 'fast',
         }
         for arg in kwargs.keys():
             params[arg] = kwargs[arg]

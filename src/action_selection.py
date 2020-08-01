@@ -89,7 +89,7 @@ class ActionSelector(object):
         Q_a     = np.zeros(len(actions))
         
         for a in actions:
-            Q_a[a] = self.agent.Q[state, a] + stats.norm.rvs(size = 1) * np.sqrt(self.agent.u[state, a])            
+            Q_a[a] = self.agent.Q[state, a] + self.agent.decision_making_method_params * stats.norm.rvs(size = 1) * np.sqrt(self.agent.u[state, a])            
         
         action = np.argmax(Q_a)
 
@@ -121,7 +121,7 @@ class ActionSelector(object):
         '''
         Upper Confidence Bound
         '''
-        action = np.argmax(self.agent.Q[state,:] + self.agent.decision_making_method_params * self.agent.u[state,:])
+        action = np.argmax(self.agent.Q[state,:] + self.agent.decision_making_method_params * np.sqrt(self.agent.u[state,:]))
 
         return action
     
@@ -131,7 +131,7 @@ class ActionSelector(object):
         '''
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
 
-        tilda_u     = self.agent.get_predictive_reduction_u(state)
+        tilda_u     = self.agent.get_reduction_u(state)
 
         influence   = np.zeros(len(actions))
         
@@ -150,7 +150,7 @@ class ActionSelector(object):
         '''
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
         
-        tilda_u     = self.agent.get_predictive_reduction_u(state)            
+        tilda_u     = self.agent.get_reduction_u(state)            
         
         influence = (self.agent.Q[state, :] - np.max(self.agent.Q[state, :]))/tilda_u
         

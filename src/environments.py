@@ -89,6 +89,9 @@ class Environment(object):
         # Initialize % of times selecting best action
         best_action = np.zeros(num_steps)
 
+        # Initialize boolean if greedy policy if equal to optimal
+        is_pi_optimal = np.zeros(num_steps)
+
         for step in tqdm(range(num_steps)):
             
             start_t = time()
@@ -117,10 +120,16 @@ class Environment(object):
             # Calculate % of times selecting best action
             best_action[step] = 1 if a == int(np.where(self.optimal_pi[s, :] == 1)[0]) else 0
 
+            # Calculate greedy policy
+            agent.compute_greedy_policy()
+            is_pi_optimal[step] = 1 if np.all(agent.greedy_pi == self.optimal_pi) else 0 
+
+
             self.elapsed_time_per_step[step] = time() - start_t
         
-        agent.regret      = regret
-        agent.best_action = np.cumsum(best_action)/(np.arange(len(best_action))+1)
+        agent.regret        = regret
+        agent.best_action   = np.cumsum(best_action)/(np.arange(len(best_action))+1)
+        agent.is_pi_optimal = is_pi_optimal
 
         return agent
 
@@ -418,7 +427,7 @@ class CorridorMAB(Environment):
         self.reward_distrib_params = new_params
         
         # Mount an environment object
-        super(CorridorMAB, self).__init__()
+        super(CorridorMAB, self).__init__(params['seed'])
     
     def get_dynamics(self):
         '''
@@ -582,7 +591,7 @@ class ChainMDP(Environment):
         self.W = W
 
         # Mount an environment object
-        super(ChainMDP, self).__init__()
+        super(ChainMDP, self).__init__(params['seed'])
     
     def get_dynamics(self):
         '''
