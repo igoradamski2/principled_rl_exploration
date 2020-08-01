@@ -378,6 +378,8 @@ class Agent(object):
         Computes the naive estimate of the reduction in uncertainty
         '''
 
+        self.log_this = False
+
         if self.u_method == 'predictive' and self.red_method == 'fast':
             return self.get_predictive_reduction_u(state)
         
@@ -407,6 +409,8 @@ class Agent(object):
                 self._R_ = deepcopy(copy_R)
                 self._D_ = deepcopy(copy_D)
         
+        self.log_this = True
+        
         return old_u[state, :] - new_uncert
 
     
@@ -424,6 +428,8 @@ class Agent(object):
         red_var_2 = np.zeros((len(self._env_states), len(actions)))
         red_var_3 = np.zeros(len(actions))
         
+        copy_R_1 = deepcopy(self._R_)
+        copy_D_1 = deepcopy(self._D_)
         for a in actions:
             copy_R = deepcopy(self._R_)
             copy_D = deepcopy(self._D_)
@@ -442,8 +448,8 @@ class Agent(object):
             red_var_2[:, a] -= copy_D[(state, a)].get_predictive_moment('epistemic_variance')
             red_var_3[a]    -= copy_D[(state, a)].get_predictive_moment(1)[state]**2
 
-        #self._R_ = deepcopy(copy_R)
-        #self._D_ = deepcopy(copy_D)
+        self._R_ = deepcopy(copy_R_1)
+        self._D_ = deepcopy(copy_D_1)
 
         if self.Q is None:
             self.get_Q()
