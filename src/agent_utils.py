@@ -4,6 +4,8 @@ import matplotlib.pyplot as plt
 import itertools
 import os
 
+import pickle
+
 #plt.rcParams['text.usetex'] = True
 #plt.rcParams['text.latex.preamble'] = [r'\usepackage{amsmath}']
 
@@ -94,10 +96,14 @@ class SimplePlotter(object):
             best_a      = np.zeros((num_repeats, steps))
             state_freq  = np.zeros((num_repeats, 10, len(self.env._states)))
             step_time   = np.zeros((num_repeats, steps))
-            first_t_opt = np.zeros(num_repeats)
 
-            Qs         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
-            us         = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
+            Qs          = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
+            us          = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
+
+            success            = []
+            almost_success     = []
+            first_t_opt        = np.zeros(num_repeats)
+            first_t_almost_opt = np.zeros(num_repeats)
 
             for iteration in range(num_repeats):
 
@@ -115,11 +121,17 @@ class SimplePlotter(object):
                 state_freq[iteration, :, :] = agent.get_state_frequencies()
                 step_time[iteration, :]     = self.env.elapsed_time_per_step
 
-                where_1 = np.where(agent.is_pi_optimal == 1)[0]
-                if len(where_1) == 0:
-                    first_t_opt[iteration] = steps
+                if agent.success:
+                    first_t_opt[iteration] = np.min(np.where(agent.is_pi_optimal == 1)[0])
+                    success.append(iteration)
                 else:
-                    first_t_opt[iteration]      = np.min(where_1)
+                    first_t_opt[iteration] = steps
+                
+                if agent.almost_success:
+                    first_t_almost_opt[iteration] = np.min(np.where(agent.is_pi_almost_optimal == 1)[0])
+                    almost_success.append(iteration)
+                else:
+                    first_t_almost_opt[iteration] = steps
 
                 Qs[iteration, :, :, :]      = np.array(agent.logger['Q'])
                 if 'u' in agent.logger.keys():
@@ -127,6 +139,41 @@ class SimplePlotter(object):
             
             agent.mean_regret      = np.mean(regrets, axis = 0)
             agent.sd_regret        = np.sqrt(np.var(regrets, axis = 0))
+
+            success        = np.array(success)
+            almost_success = np.array(almost_success)
+            if len(success) > 0:
+                agent.mean_regret_s      = np.mean(regrets[success], axis = 0)
+                agent.sd_regret_s        = np.sqrt(np.var(regrets[success], axis = 0))
+
+                agent.mean_best_action_s = np.mean(best_a[success], axis = 0)
+                agent.sd_best_action_s   = np.sqrt(np.var(best_a[success], axis = 0))
+
+                agent.mean_state_freq_s  = np.mean(state_freq[success], axis = 0)
+                agent.sd_state_freq_s    = np.sqrt(np.var(state_freq[success], axis = 0))
+
+                agent.mean_Qs_s          = np.mean(Qs[success], axis = 0)
+                agent.sd_Qs_s            = np.sqrt(np.var(Qs[success], axis = 0))
+
+                agent.mean_us_s          = np.mean(us[success], axis = 0)
+                agent.sd_us_s            = np.sqrt(np.var(us[success], axis = 0))
+
+            
+            if len(almost_success) > 0:
+                agent.mean_regret_a_s      = np.mean(regrets[almost_success], axis = 0)
+                agent.sd_regret_a_s        = np.sqrt(np.var(regrets[almost_success], axis = 0))
+
+                agent.mean_best_action_s_a = np.mean(best_a[almost_success], axis = 0)
+                agent.sd_best_action_s_a   = np.sqrt(np.var(best_a[almost_success], axis = 0))
+
+                agent.mean_state_freq_a_s  = np.mean(state_freq[almost_success], axis = 0)
+                agent.sd_state_freq_a_s    = np.sqrt(np.var(state_freq[almost_success], axis = 0))
+
+                agent.mean_Qs_a_s          = np.mean(Qs[almost_success], axis = 0)
+                agent.sd_Qs_a_s            = np.sqrt(np.var(Qs[almost_success], axis = 0))
+
+                agent.mean_us_a_s          = np.mean(us[almost_success], axis = 0)
+                agent.sd_us_a_s            = np.sqrt(np.var(us[almost_success], axis = 0))
             
             agent.mean_state_freq  = np.mean(state_freq, axis = 0)
             agent.sd_state_freq    = np.sqrt(np.var(state_freq, axis = 0))
@@ -137,18 +184,29 @@ class SimplePlotter(object):
             agent.mean_step_time   = np.mean(step_time, axis = 0)
             agent.sd_step_time     = np.sqrt(np.var(step_time, axis = 0))
 
-            agent.mean_first_t_opt = np.mean(first_t_opt)
-            agent.sd_first_t_opt   = np.var(first_t_opt)
-
             agent.mean_Qs          = np.mean(Qs, axis = 0)
             agent.sd_Qs            = np.sqrt(np.var(Qs, axis = 0))
 
             agent.mean_us          = np.mean(us, axis = 0)
             agent.sd_us            = np.sqrt(np.var(us, axis = 0))
 
+            agent.mean_first_t_opt = np.mean(first_t_opt)
+            agent.sd_first_t_opt   = np.sqrt(np.var(first_t_opt))
+
+            agent.mean_first_t_almost_opt = np.mean(first_t_almost_opt, axis = 0)
+            agent.sd_first_t_almost_opt   = np.sqrt(np.var(first_t_almost_opt, axis = 0))
+
+            agent.success          = success
+            agent.almost_success   = almost_success
+
+            agent.num_repeats      = num_repeats
+
             setattr(self, agent_name, agent)
     
-    def plot_regret(self, list_agents = None, color_codes = None, figsize = (12,8), title = None, legend_codes = None):
+    def plot_regret(self, list_agents = None, color_codes = None, 
+                    figsize = (12,8), title = None, legend_codes = None,
+                    which = 'all', rect = [0, 0.1, 1, 0.9], 
+                    bbox = (0.5, -0.25)):
         '''
         Plots regret and % of best action
         '''
@@ -163,32 +221,70 @@ class SimplePlotter(object):
 
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
-            ax_reg.plot(agent.mean_regret, label = legend_codes[agent_name],
-                        color = color_codes[agent_name])
-            ax_reg.fill_between(np.arange(len(agent.mean_regret)),
-                                agent.mean_regret-agent.sd_regret,
-                                agent.mean_regret+agent.sd_regret,
-                                alpha=0.33, linestyle = 'dashed',
-                                color = color_codes[agent_name])
             
-            ax_ba.plot(agent.mean_best_action, label = legend_codes[agent_name],
-                       color = color_codes[agent_name])
-            ax_ba.fill_between(np.arange(len(agent.mean_best_action)),
-                                agent.mean_best_action-agent.sd_best_action,
-                                agent.mean_best_action+agent.sd_best_action,
+            if which == 'all':
+                regret         = agent.mean_regret
+                sd_regret      = agent.sd_regret 
+
+                best_action    = agent.mean_best_action
+                sd_best_action = agent.sd_best_action
+
+                num = len(agent.success)
+            if which == 'success':
+                if hasattr(agent, 'mean_regret_s'):
+                    regret    = agent.mean_regret_s
+                    sd_regret = agent.sd_regret_s
+
+                    best_action    = agent.mean_best_action_s
+                    sd_best_action = agent.sd_best_action_s
+
+                    num = len(agent.success)
+                else:
+                    continue
+            if which == 'almost_success':
+                if hasattr(agent, 'mean_regret_s_a'):
+                    regret    = agent.mean_regret_a_s
+                    sd_regret = agent.sd_regret_a_s
+
+                    best_action    = agent.mean_best_action_a_s
+                    sd_best_action = agent.sd_best_action_a_s
+
+                    num = len(agent.almost_success)
+                else:
+                    continue
+            
+            add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
+
+            this_color = np.random.rand(3,)
+
+            ax_reg.plot(regret,
+                        color = color_codes[agent_name] if color_codes is not None else this_color)
+            ax_reg.fill_between(np.arange(len(regret)),
+                                regret-sd_regret,
+                                regret+sd_regret,
                                 alpha=0.33, linestyle = 'dashed',
-                                color = color_codes[agent_name])
+                                color = color_codes[agent_name] if color_codes is not None else this_color)
+            
+            ax_ba.plot(best_action, label = legend_codes[agent_name] + add_string if legend_codes is not None else agent_name + add_string,
+                       color = color_codes[agent_name] if color_codes is not None else this_color)
+            ax_ba.fill_between(np.arange(len(best_action)),
+                                best_action-sd_best_action,
+                                best_action+sd_best_action,
+                                alpha=0.33, linestyle = 'dashed',
+                                color = color_codes[agent_name] if color_codes is not None else this_color)
+                            
+            ax_ba.set_xlabel('t', fontsize = 16)
             
             ax_reg.axvline(x = agent.mean_first_t_opt,
-                           color = color_codes[agent_name])
+                           color = color_codes[agent_name] if color_codes is not None else this_color)
         
         ax_reg.set_title('Online regret', fontsize = 16)
         ax_ba.set_title('% of time best action is chosen', fontsize = 16)
 
-        ax_reg.legend(fontsize = 16)
-        ax_ba.legend(fontsize = 16)
+        #ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+        ax_ba.legend(loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
 
-        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
+        plt.tight_layout(rect=rect)
 
         fig.savefig(self.foldername + '/regret')
         
@@ -216,67 +312,111 @@ class SimplePlotter(object):
         ax_reg.set_title('Online regret')
         ax_ba.set_title('% of time best action is chosen')
 
-        ax_reg.legend()
-        ax_ba.legend()
+        ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+        #ax_ba.legend()
 
-        plt.tight_layout(rect=[0, 0.1, 1, 0.95])
+        plt.tight_layout(rect=[0, 0.2, 1, 0.95])
 
         fig.savefig(self.foldername + '/regret_noerr')
         
         plt.show()
 
     
-    def plot_Q_u(self, state_actions = None, *names):
+    def plot_Q_u(self, list_agents = None, state_actions = None, figsize = (20,20),
+                 which = 'all', title = None, colors = {'mean': '#3138fb', 'var': '#3138fb'},
+                 bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
         '''
         Plots the evolution of Q and u on plot grids
         for specified state-action pairs or for all if unspecified
         '''
-        if len(names) == 0:
+        if list_agents is None:
             list_agents = self.list_agents()
-        else:
-            list_agents = names
         
         num_states, num_actions = self.env.optimal_Q.shape
 
         if state_actions is None:
             state_actions = [(i,j) for i in range(num_states) for j in range(num_actions)]
+            
+            height = num_states
+            width  = num_actions
+
+        else:
+            assert len(state_actions) % 2 == 0, 'Make it an even number of subplots (state-actions)'
+
+            height = int(len(state_actions)/2)
+            width  = height
 
         figures = {}
 
         for agent_name in list_agents:
-
-            fig, axes = plt.subplots(num_states, num_actions, figsize=(20, 20), \
-                                     facecolor='w', edgecolor='k')
-
-            fig.subplots_adjust(hspace = .3, wspace=.2)
-
-            plt.tight_layout()
-
-            fig.suptitle(agent_name, fontsize=25)
-
-            axes = axes.ravel()
 
             agent = getattr(self, agent_name)
 
             #Q = np.array(agent.logger['Q'])
             #u = np.array(agent.logger['u'])
 
-            Q  = agent.mean_Qs 
-            u  = agent.mean_us
+            if which == 'all':
+                
+                Q  = agent.mean_Qs 
+                u  = agent.mean_us
+
+                num = len(agent.success)
+            if which == 'success':
+                if hasattr(agent, 'mean_regret_s'):
+                    
+                    Q  = agent.mean_Qs_s
+                    u  = agent.mean_us_s
+
+                    num = len(agent.success)
+                else:
+                    continue
+            if which == 'almost_success':
+                if hasattr(agent, 'mean_regret_s_a'):
+                    
+                    Q  = agent.mean_Qs_a_s 
+                    u  = agent.mean_us_a_s
+
+                    num = len(agent.almost_success)
+                else:
+                    continue
+
+            fig, axes = plt.subplots(height, width, figsize=figsize, \
+                                     facecolor='w', edgecolor='k')
+
+            fig.subplots_adjust(hspace = .3, wspace=.2)
+
+            add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
+            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=25)
+
+            axes = axes.ravel()
 
             for idx, sa in enumerate(state_actions):
                 
-                axes[idx].plot(Q[:, sa[0], sa[1]], color = 'blue', label = 'Predicted Q')
+                axes[idx].plot(Q[:, sa[0], sa[1]], color = colors['mean'], label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$')
                 axes[idx].fill_between(np.arange(Q.shape[0]),
-                                       Q[:, sa[0], sa[1]] - np.sqrt(u[:, sa[0], sa[1]]),
-                                       Q[:, sa[0], sa[1]] + np.sqrt(u[:, sa[0], sa[1]]),
-                                            alpha=0.33, linestyle = 'None', color = 'blue')
+                                       Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                       Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
+                                            alpha=0.43, linestyle = '--', color = colors['var'],
+                                            label = r'$\pm 2$Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$' if not np.all(u[:, sa[0], sa[1]]==0) else None)
 
-                axes[idx].set_title('$Q({}, {})$'.format(sa[0], sa[1]))
+                axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
                 #axes[idx].x_label('Iteration') 
 
                 # Plot optmial Q for reference
-                axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], color = 'red', label = 'Optimal Q')
+                axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], 
+                                  color = 'black', linestyle = '--', 
+                                  label = r'$Q^{*,\mathcal{W}}$', alpha = 0.7)
+                
+                if idx >= (width*(height-1)):
+                    axes[idx].set_xlabel('t', fontsize = 16)
+
+                if idx % width == 0:
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+
+            handles, labels = axes[idx].get_legend_handles_labels()
+            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+
+            plt.tight_layout(rect = rect)
 
             figures[agent_name] = fig
 
@@ -338,7 +478,7 @@ class SimplePlotter(object):
                                        Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
                                        Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
                                             alpha=0.43, linestyle = 'None', color = color_codes[agent_name],
-                                            label = r'Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')
+                                            label = r'$\pm $2Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')
                 
                 axes[idx].plot(Q[:, sa[0], sa[1]] - 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
                               color = 'red', label = 'Monte Carlo uncertainty estimate using $10,000$ samples',
@@ -473,34 +613,79 @@ class SimplePlotter(object):
         return fig
 
 
-    def plot_state_freq(self, intervals = None, *names):
+    def plot_state_freq(self, list_agents = None, figsize = (12,10),
+                        which = 'all', title = None, colors = {'mean': '#3138fb', 'var': '#3138fb'},
+                        capsize = 5, rect = [0, 0.22, 1, 0.95]):
         '''
         Implement so that it shows in intervals instead of 10
         '''
-        if len(names) == 0:
+        if list_agents is None:
             list_agents = self.list_agents()
-        else:
-            list_agents = names
 
         for agent_name in list_agents:
 
-            fig, axes = plt.subplots(2, 5, figsize=(12, 8), \
+            agent = getattr(self, agent_name)
+
+            #Q = np.array(agent.logger['Q'])
+            #u = np.array(agent.logger['u'])
+
+            if which == 'all':
+                
+                states = agent._env_states
+                mean_state_freq = agent.mean_state_freq
+                sd_state_freq   = agent.sd_state_freq
+
+                num = len(agent.success)
+            if which == 'success':
+                if hasattr(agent, 'mean_regret_s'):
+                    
+                    states = agent._env_states
+                    mean_state_freq = agent.mean_state_freq_s
+                    sd_state_freq   = agent.sd_state_freq_s
+
+                    num = len(agent.success)
+                else:
+                    continue
+            if which == 'almost_success':
+                if hasattr(agent, 'mean_regret_s_a'):
+                    
+                    states = agent._env_states
+                    mean_state_freq = agent.mean_state_freq_a_s
+                    sd_state_freq   = agent.sd_state_freq_a_s
+
+                    num = len(agent.almost_success)
+                else:
+                    continue
+
+            fig, axes = plt.subplots(2, 5, figsize=figsize, \
                                             facecolor='w', edgecolor='k')
             
+            add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
+            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=25)
+
             axes = axes.ravel()
 
             agent = getattr(self, agent_name)
 
             for i in range(10):
-                axes[i].bar(agent._env_states, agent.mean_state_freq[i, :])
+                axes[i].bar(states, mean_state_freq[i, :], yerr=sd_state_freq[i, :], capsize=capsize)
 
-                axes[i].set_xticks(agent._env_states)
+                axes[i].set_xticks(states)
 
-                axes[i].set_title('After step = {}'.format((i+1)*int(len(agent.memory_buffer)/10)))
+                axes[i].set_title('After step = {}'.format((i+1)*int(len(agent.memory_buffer)/10)), fontsize = 16)
+
+                if i >= 5:
+                    axes[i].set_xlabel('State', fontsize = 16)
+
+                if i % 5 == 0:
+                    axes[i].set_ylabel('Visited frequency', fontsize = 16) 
             
             fig.savefig(self.foldername + '/' + agent_name + '_state_freqs')
 
+            plt.tight_layout(rect=[0, 0.22, 1, 0.95])
+
             plt.show()
+    
         
 
 

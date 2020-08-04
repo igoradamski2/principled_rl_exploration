@@ -131,7 +131,7 @@ class ActionSelector(object):
         '''
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
 
-        tilda_u     = self.agent.get_reduction_u(state)
+        tilda_u     = np.sqrt(self.agent.get_reduction_u(state))
 
         influence   = np.zeros(len(actions))
         
@@ -150,9 +150,9 @@ class ActionSelector(object):
         '''
         actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
         
-        tilda_u     = self.agent.get_reduction_u(state)            
+        tilda_u     = np.sqrt(self.agent.get_reduction_u(state))            
         
-        influence = (self.agent.Q[state, :] - np.max(self.agent.Q[state, :]))/tilda_u
+        influence   = -np.abs((self.agent.Q[state, :] - np.max(self.agent.Q[state, :]))/tilda_u)
         
         f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
         

@@ -90,8 +90,10 @@ class Environment(object):
         best_action = np.zeros(num_steps)
 
         # Initialize boolean if greedy policy if equal to optimal
-        is_pi_optimal = np.zeros(num_steps)
+        is_pi_optimal        = np.zeros(num_steps)
+        is_pi_almost_optimal = np.zeros(num_steps)
 
+        i = 0
         for step in tqdm(range(num_steps)):
             
             start_t = time()
@@ -107,11 +109,19 @@ class Environment(object):
             # Update agent
             agent.update([s, a, s_, r])
 
+            # If this is the mystery world we need to recompute Q, pi after some time
+            if hasattr(self, 'switch') and i == 0:
+                if self.switch > 0:
+                    self.get_true_Q(agent.gamma)
+                    i = 1
+                    is_pi_optimal        = np.zeros(num_steps)
+                    is_pi_almost_optimal = np.zeros(num_steps)
+
+
             if self.finish_condition():
                 self.reset()
 
-            #print('I chose action {} in state {}'.format(a, s))
-            #stdout.write('\nI chose action {} in state {}'.format(a, s))
+            #stdout.write('\nStep {}/{} - I chose action {} in state {}'.format(step, num_steps, a, s))
             #stdout.flush()
 
             # Calculate regret
@@ -122,14 +132,20 @@ class Environment(object):
 
             # Calculate greedy policy
             agent.compute_greedy_policy()
-            is_pi_optimal[step] = 1 if np.all(agent.greedy_pi == self.optimal_pi) else 0 
+            is_pi_optimal[step]        = 1 if np.all(agent.greedy_pi == self.optimal_pi) else 0 
+            is_pi_almost_optimal[step] = 1 if np.sum(agent.greedy_pi == self.optimal_pi)/self.optimal_pi.size >= 0.9 else 0
 
 
             self.elapsed_time_per_step[step] = time() - start_t
         
         agent.regret        = regret
         agent.best_action   = np.cumsum(best_action)/(np.arange(len(best_action))+1)
-        agent.is_pi_optimal = is_pi_optimal
+        
+        agent.is_pi_optimal        = is_pi_optimal
+        agent.is_pi_almost_optimal = is_pi_almost_optimal
+        
+        agent.success        = True if is_pi_optimal[-1] == 1 else False
+        agent.almost_success = True if is_pi_almost_optimal[-1] else False
 
         return agent
 
@@ -486,9 +502,10 @@ class CorridorMAB(Environment):
         at time self.t
         '''
         # Figure out which bandit is the best
-        idx = np.unravel_index(np.argmax(self.reward_distrib_params), 
+        idx = np.unravel_index(2*np.argmax(np.array(self.reward_distrib_params)[:,:,0]), 
                                np.array(self.reward_distrib_params).shape)
 
+        assert idx[1] == 0 and idx[2] == 0, 'Something wrong!'
         if self.t <= (idx[0]):
             return self.t * self.move_penalty
         else:
@@ -557,11 +574,234 @@ class CorridorMAB(Environment):
         
         return cls(params)
 
-class MazeMAB(Environment):
+class MysteryCorridor(Environment):
     '''
-    This environment will be a maze with bandits
+    Mystery corridor environment
     '''
-    pass
+    def __init__(self, params):
+        '''
+        Initializes the Corridor of Multi Armed Bandits environment
+
+        Inputs: params -> dict
+                must have attributes:
+                    'num_rooms': number of consecutive rooms, without the mystery room : int
+                    'num_bandits': number of bandits per room : int
+                    'reward_distrib': distributions of bandits, without the mystery room : list
+                    'reward_distrib_params': distributions parameters : list of lists (specifies the best bandit in each room)
+                    'mystery_room': reward_distrib_params but for the mystery room
+        '''
+
+        self.num_rooms   = params['num_rooms']
+        self.num_bandits = params['num_bandits']
+        
+        self.reward_distrib        = params['reward_distrib'] 
+        self.reward_distrib_params = params['reward_distrib_params']
+
+        self.mystery_room = params['mystery_room']
+        
+        self.move_penalty = params['move_penalty']
+
+        self.switch_reward = params['switch_reward']
+
+        if self.num_bandits > len(self.reward_distrib) and len(self.reward_distrib) == 1:
+            self.reward_distrib *= self.num_bandits
+
+        assert len(self.reward_distrib) == self.num_bandits, "Too few distributions specified for that number of bandits"
+
+        # Populate that distribution through rooms
+        self.reward_distrib = [self.reward_distrib]*self.num_rooms
+
+        # Populate reward_distrib_params
+        new_params = []
+        for mu, var in self.reward_distrib_params:
+            this_state = [[mu, var]]
+            for _ in range(self.num_bandits - 1):
+                this_state.append([
+                    mu - max(0, random.gauss(1,1)) - 1,
+                    var + max(-var, random.gauss(0,2)) + 1,
+                ])
+            new_params.append(this_state) 
+
+        self.reward_distrib_params = new_params
+
+        # At first, the door to mystery room is blocked
+        self.switch = 0
+        
+        # Mount an environment object
+        super(MysteryCorridor, self).__init__(params['seed'])
+    
+    def reset(self):
+        '''
+        Reset the environment state and time to the initial state
+        '''
+        self.s = self.get_initial_state()
+        self.t = 0
+        self.switch = 0
+
+    def get_dynamics(self):
+        '''
+        Returns a function D:(s,a) -> next_state
+        '''
+        def D(s, a):
+            if a == self.num_bandits: # This means go to room to the left
+                if s == 0:
+                    if self.switch == 0:
+                        return s
+                    else:
+                        return self.num_rooms
+                #elif s == self.num_rooms:
+                #    return self.num_rooms: # uncomment to makes things easier
+                else:
+                    if s == self.num_rooms:
+                        return s
+                    return s - 1 
+            
+            if a == (self.num_bandits + 1): # This means go to room to the right
+                if s == (self.num_rooms - 1):
+                    if self.switch == 0:
+                        self.switch = 1
+                    return s
+                
+                elif s == self.num_rooms:
+                    return 0
+                
+                else:
+                    return s + 1
+
+            if a < self.num_bandits: # This activates one of the arms
+                return s
+        
+        return D
+
+    def get_rewards(self):
+        '''
+        Returns a function R:(s,a,s_) -> reward
+
+        We make the reward function depend only on s,a
+        '''
+        def R(s, a, s_):
+            if a < self.num_bandits: # This action activates one of the arms
+                if s != self.num_rooms:
+                    dist = getattr(Distribution, self.reward_distrib[s][a])
+                    return dist(*self.reward_distrib_params[s][a])
+                else:
+                    dist = getattr(Distribution, 'normal')
+                    return dist(*self.mystery_room[a])
+
+            else: # This action triggers room change and is associated with a negative reward (mostly)
+                if s == self.num_rooms - 1 and a == self.num_bandits + 1: # means we are in room with switch
+                    if self.switch == 1:
+                        self.switch += 1
+                        return self.switch_reward
+                    elif self.switch == 2:
+                        return 0
+                
+                return self.move_penalty
+
+        return R
+    
+    def get_initial_state(self):
+        return 0
+    
+    def get_all_state_action_pairs(self):
+        '''
+        Returns all possible state-action pairs
+            - populate self._states with all state numbers (np.array)
+            - populate self._actions with all action numbers (np.array)
+            - populate self._sa_pairs with all possible state-action pairs (list of tuples)
+        '''
+        self._states   = np.arange(self.num_rooms + 1)
+        self._actions  = np.arange(self.num_bandits + 2)
+        self._sa_pairs = [(s,a) for s,a in list(itertools.product(self._states, self._actions))]
+
+    def oracle_agent(self):
+        '''
+        Returns the cumulative reward of the oracle agent
+        at time self.t
+        '''
+        # Figure out which bandit is the best
+        idx = np.unravel_index(2*np.argmax(np.array(self.reward_distrib_params)[:,:,0]), 
+                               np.array(self.reward_distrib_params).shape)
+
+        assert idx[1] == 0 and idx[2] == 0, 'Something wrong!'
+        if self.t <= self.num_rooms - 1:
+            return self.t * self.move_penalty
+        elif self.t == self.num_rooms:
+            return (self.t - 1) * self.move_penalty + self.switch_reward
+        elif self.t <= 2*self.num_rooms:
+            return (self.num_rooms - 1) * self.move_penalty + self.switch_reward + (self.t - self.num_rooms) * self.move_penalty
+        else:
+            return (self.num_rooms - 1) * self.move_penalty + self.switch_reward + (self.num_rooms) * self.move_penalty + (self.t -2*self.num_rooms)*self.mystery_room[0][0]
+    
+    def get_true_dynamics_matrix(self):
+        '''
+        Returns the true dynamics matrix
+        '''
+        D = np.zeros((self.num_rooms+1,self.num_rooms+1,self.num_bandits+2))
+
+        dynamics = self.get_dynamics()
+
+        prev_switch = deepcopy(self.switch)
+        for state in self._states:
+            for action in self._actions:
+                next_s = dynamics(state, action)
+                self.switch = prev_switch
+                D[state, next_s, action] = 1
+
+        return D
+    
+    def get_true_rewards_matrix(self):
+        '''
+        Returns the true rewards matrix
+        '''
+        R = np.zeros((self.num_rooms+1, self.num_bandits + 2))
+
+        rewards = self.get_rewards()
+
+        for state in self._states:
+            for action in self._actions:
+                av_reward = np.zeros(100)
+                for i in range(100):
+                    av_reward[i] = rewards(state, action, None)
+                R[state, action] = av_reward.mean()
+        
+        return R
+    
+    def get_true_sec_moment_rewards_matrix(self):
+        '''
+        Returns the true second moment rewards matrix
+        '''
+        R = np.zeros((self.num_rooms, self.num_bandits + 2))
+        R[:, (-1,-2)] = self.move_penalty**2
+
+        for state in self._states:
+            for action in self._actions:
+                if action < self.num_bandits:
+                    R[state, action] = self.reward_distrib_params[state][action][1] + self.reward_distrib_params[state][action][0]**2
+        
+        return R
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        return False
+    
+    @classmethod
+    def default(cls, **kwargs):
+        params = {'num_rooms': 4,
+                  'num_bandits': 2, 
+                  'reward_distrib': ['normal'], 
+                  'reward_distrib_params': [[0,1], [0,1], [0,1], [1,1]],
+                  'mystery_room': [[10,1], [5,1]],
+                  'switch_reward': 10,
+                  'move_penalty': -1,
+                  'seed': None,
+        }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
+        
+        return cls(params)
 
 class ChainMDP(Environment):
     '''
@@ -694,7 +934,7 @@ class ChainMDP(Environment):
         at time self.t
         '''
         comp_eps = np.floor(self.t/self.N)
-        return comp_eps * (self.final_reward - self.cost) - ((self.t - (comp_eps*self.N)) * (self.cost/self.N))
+        return comp_eps * (self.final_reward - (self.N-1)*(self.cost)/self.N) - ((self.t - (comp_eps*self.N)) * (self.cost/self.N))
         
     
     def get_true_dynamics_matrix(self):

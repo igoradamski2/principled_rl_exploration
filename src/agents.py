@@ -263,14 +263,14 @@ class Agent(object):
 
         it  = 0  
         while not converged:
-            u           = var_E_R ### it works without the deepcopy
+            #u           = deepcopy(var_E_R) ### it works without the deepcopy
             second_term = 0
             for s in self._env_states:
                 for a in self._env_actions:
                     second_term += self.pi[s,a]*(Q_2[s,a]*var_p[:,s,:] + \
                         u_[s,a]*(E_p_2[:,s,:] + var_p[:,s,:]))
             
-            u += (self.gamma**2) * second_term
+            u = var_E_R + (self.gamma**2) * second_term
 
             if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
@@ -303,12 +303,12 @@ class Agent(object):
 
         it  = 0
         while not converged:
-            u           = var_E_R 
+            u           = deepcopy(var_E_R)
             second_term = 0
             bound_term  = 0
             for s in self._env_states:
                 for a in self._env_actions:
-                    second_term += self.pi[s,a]*((Q[s,a]**2)*var_p[:,s,:] + \
+                    second_term += (self.pi[s,a]**2)*((Q[s,a]**2)*var_p[:,s,:] + \
                         u_[s,a]*((E_p[:,s,:]**2) + var_p[:,s,:]))
                     
                     third_term   = 0 
@@ -316,7 +316,7 @@ class Agent(object):
                         for a_ in self._env_actions:
                             if s == s_ or a == a_:
                                 continue
-                            third_term += np.sqrt(u_[s,a]*u[s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
+                            third_term += (self.pi[s,a]**2)*np.sqrt(u[s,a]*u[s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
                                 E_p[:,s,:]*E_p[:,s_,:]) + \
                                     np.abs(Q[s,a]*Q[s_,a_]*Cov_p[s,s_,:,:])
 
@@ -357,7 +357,7 @@ class Agent(object):
         it  = 0
         u_ = np.zeros(self.Q.shape)
         while not converged:
-            u = local_u
+            u = deepcopy(local_u)
             second_term = 0
             for s in self._env_states:
                 for a in self._env_actions:
@@ -378,23 +378,23 @@ class Agent(object):
         Computes the naive estimate of the reduction in uncertainty
         '''
 
-        self.log_this = False
-
         if self.u_method == 'predictive' and self.red_method == 'fast':
             return self.get_predictive_reduction_u(state)
         
+        self.log_this = False
         # Available actions
         actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
 
         new_uncert = np.zeros(len(actions))
 
-        old_u = self.u
+        old_u = deepcopy(self.u)
+
+        copy_R = deepcopy(self._R_)
+        copy_D = deepcopy(self._D_)
 
         for a in actions:
+            old_probability = copy_D[(state, a)].get_predictive_moment(1)
             for s_ in self._env_states:
-
-                copy_R = deepcopy(self._R_)
-                copy_D = deepcopy(self._D_)
 
                 self._R_[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
 
@@ -403,23 +403,23 @@ class Agent(object):
                 # Now recompute u
                 self.get_u()
 
-                new_uncert[a] += copy_D[(state, a)].get_predictive_moment(1)[s_] * self.u[state, a]
+                new_uncert[a] += old_probability[s_] * self.u[state, a]
 
                 # Reset the models
                 self._R_ = deepcopy(copy_R)
                 self._D_ = deepcopy(copy_D)
         
+        self.u = old_u
         self.log_this = True
         
         return old_u[state, :] - new_uncert
 
-    
     def get_predictive_reduction_u(self, state):
-        '''
-        Computes the reduction in predictive uncertainty from a given state
+        
+        #Computes the reduction in predictive uncertainty from a given state
 
-        It uses the formula for predictive u
-        '''
+        #It uses the formula for predictive u
+        
         # Available actions
         actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
 
@@ -432,21 +432,24 @@ class Agent(object):
         copy_D_1 = deepcopy(self._D_)
         for a in actions:
             copy_R = deepcopy(self._R_)
-            copy_D = deepcopy(self._D_)
 
             red_var_1[a] = copy_R[(state, a)].get_predictive_moment('epistemic_variance')
             copy_R[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
-            #copy_R[(state, a)].update(self.observed_r[(state, a)] + [np.mean(self.observed_r[(state, a)])])
 
             red_var_1[a] -= copy_R[(state, a)].get_predictive_moment('epistemic_variance')
 
-            red_var_2[:, a] = copy_D[(state, a)].get_predictive_moment('epistemic_variance')
-            red_var_3[a]    = copy_D[(state, a)].get_predictive_moment(1)[state]**2
+            red_var_2[:, a] = copy_D_1[(state, a)].get_predictive_moment('epistemic_variance')
+            red_var_3[a]    = copy_D_1[(state, a)].get_predictive_moment(1)[state]**2
             
-            copy_D[(state, a)].update(self.observed_d[(state, a)] + [copy_D[(state, a)].get_most_probable_outcome()])
+            old_probability = copy_D_1[(state, a)].get_predictive_moment(1)
 
-            red_var_2[:, a] -= copy_D[(state, a)].get_predictive_moment('epistemic_variance')
-            red_var_3[a]    -= copy_D[(state, a)].get_predictive_moment(1)[state]**2
+            for s_ in self._env_states:
+                copy_D = deepcopy(copy_D_1)
+
+                copy_D[(state, a)].update(self.observed_d[(state, a)] + [s_])
+                
+                red_var_2[:, a] -= old_probability[s_] * copy_D[(state, a)].get_predictive_moment('epistemic_variance')
+                red_var_3[a]    -= old_probability[s_] * (copy_D[(state, a)].get_predictive_moment(1)[state])**2
 
         self._R_ = deepcopy(copy_R_1)
         self._D_ = deepcopy(copy_D_1)
@@ -454,16 +457,18 @@ class Agent(object):
         if self.Q is None:
             self.get_Q()
 
-        u_red = red_var_1
+        B = np.zeros(len(actions))
         
         #pi = np.ones((len(self._env_states), len(self._env_actions)))
         for s in self._env_states:
             for a in self._env_actions:
-                u_red += (self.gamma**2)*self.pi[s,a]*(self.Q[s,a]**2)*red_var_2[s, :]
+                B += self.pi[s,a]*(self.Q[s,a]**2)*red_var_2[s, :]
         
+        u_red = red_var_1 + (self.gamma**2)*B
         u_red /= (1 - (self.gamma**2)*self.pi[state,:]*(red_var_2[state, :] + red_var_3))
 
         return u_red 
+
 
     def take_action(self, state):
         '''
