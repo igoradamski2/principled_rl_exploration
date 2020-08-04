@@ -5,6 +5,7 @@ from copy import deepcopy
 from indexedproperty import indexedproperty
 import importlib
 from scipy import stats
+import time
 
 from .agent_utils import Memory
 from .models import *
@@ -272,7 +273,9 @@ class Agent(object):
             
             u = var_E_R + (self.gamma**2) * second_term
 
-            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+            print(u)
+
+            if np.max(np.abs(u_ - u)) < 0.05 or it >= self.dp_maxit:
                 converged = True
             
             u_  = u
@@ -324,7 +327,7 @@ class Agent(object):
 
             u += (self.gamma**2) * second_term + 2*(self.gamma**2)*bound_term
 
-            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+            if np.max(np.abs(u_ - u)) < 0.1 or it >= self.dp_maxit:
                 converged = True
             
             u_  = u
@@ -365,7 +368,7 @@ class Agent(object):
             
             u += (self.gamma**2) * second_term
 
-            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+            if np.max(np.abs(u_ - u)) < 0.05 or it >= self.dp_maxit:
                 converged = True
 
             u_  = u
