@@ -273,8 +273,6 @@ class Agent(object):
             
             u = var_E_R + (self.gamma**2) * second_term
 
-            print(u)
-
             if np.max(np.abs(u_ - u)) < 0.05 or it >= self.dp_maxit:
                 converged = True
             
