@@ -290,40 +290,86 @@ class SimplePlotter(object):
         
         plt.show()
     
-    def plot_regret_noerr(self, *names):
+    def plot_regret_noerr(self, list_agents = None, color_codes = None, 
+                    figsize = (12,8), title = None, legend_codes = None,
+                    which = 'all', rect = [0, 0.1, 1, 0.9], 
+                    bbox = (0.5, -0.25)):
         '''
         Plots regret and % of best action
         '''
-        if len(names) == 0:
+        if list_agents is None:
             list_agents = self.list_agents()
-        else:
-            list_agents = names
         
-        fig    = plt.figure(figsize = (12,8))
+        fig    = plt.figure(figsize = figsize)
         ax_reg = fig.add_subplot(211)
         ax_ba  = fig.add_subplot(212)
 
+        fig.suptitle(title, fontsize=25)
+
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
-            ax_reg.plot(agent.mean_regret, label = agent_name)
             
-            ax_ba.plot(agent.mean_best_action, label = agent_name)
+            if which == 'all':
+                regret         = agent.mean_regret
+                sd_regret      = agent.sd_regret 
+
+                best_action    = agent.mean_best_action
+                sd_best_action = agent.sd_best_action
+
+                num = len(agent.success)
+            if which == 'success':
+                if hasattr(agent, 'mean_regret_s'):
+                    regret    = agent.mean_regret_s
+                    sd_regret = agent.sd_regret_s
+
+                    best_action    = agent.mean_best_action_s
+                    sd_best_action = agent.sd_best_action_s
+
+                    num = len(agent.success)
+                else:
+                    continue
+            if which == 'almost_success':
+                if hasattr(agent, 'mean_regret_s_a'):
+                    regret    = agent.mean_regret_a_s
+                    sd_regret = agent.sd_regret_a_s
+
+                    best_action    = agent.mean_best_action_a_s
+                    sd_best_action = agent.sd_best_action_a_s
+
+                    num = len(agent.almost_success)
+                else:
+                    continue
+            
+            add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
+
+            this_color = np.random.rand(3,)
+
+            ax_reg.plot(regret,
+                        color = color_codes[agent_name] if color_codes is not None else this_color)
+            
+            ax_ba.plot(best_action, label = legend_codes[agent_name] + add_string if legend_codes is not None else agent_name + add_string,
+                       color = color_codes[agent_name] if color_codes is not None else this_color)
+                            
+            ax_ba.set_xlabel('t', fontsize = 16)
+            
+            ax_reg.axvline(x = agent.mean_first_t_opt,
+                           color = color_codes[agent_name] if color_codes is not None else this_color)
         
-        ax_reg.set_title('Online regret')
-        ax_ba.set_title('% of time best action is chosen')
+        ax_reg.set_title('Online regret', fontsize = 16)
+        ax_ba.set_title('% of time best action is chosen', fontsize = 16)
 
-        ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
-        #ax_ba.legend()
+        #ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+        ax_ba.legend(loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
 
-        plt.tight_layout(rect=[0, 0.2, 1, 0.95])
+        plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/regret_noerr')
+        fig.savefig(self.foldername + '/regret')
         
         plt.show()
 
     
     def plot_Q_u(self, list_agents = None, state_actions = None, figsize = (20,20),
-                 which = 'all', title = None, colors = {'mean': '#3138fb', 'var': '#3138fb'},
+                 which = 'all', title = None, colors = None,
                  bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
         '''
         Plots the evolution of Q and u on plot grids
@@ -390,13 +436,18 @@ class SimplePlotter(object):
 
             axes = axes.ravel()
 
+            this_color = np.random.rand(3,)
+
             for idx, sa in enumerate(state_actions):
                 
-                axes[idx].plot(Q[:, sa[0], sa[1]], color = colors['mean'], label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$')
+                axes[idx].plot(Q[:, sa[0], sa[1]],
+                               color = colors[agent_name]['var'] if colors is not None else this_color, 
+                               label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$')
                 axes[idx].fill_between(np.arange(Q.shape[0]),
                                        Q[:, sa[0], sa[1]] - 2*np.sqrt(u[:, sa[0], sa[1]]),
                                        Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
-                                            alpha=0.43, linestyle = '--', color = colors['var'],
+                                            alpha=0.43, linestyle = '--', 
+                                            color = colors[agent_name]['var'] if colors is not None else this_color,
                                             label = r'$\pm 2$Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$' if not np.all(u[:, sa[0], sa[1]]==0) else None)
 
                 axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
@@ -424,7 +475,8 @@ class SimplePlotter(object):
 
             plt.show()
     
-    def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0):
+    def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0,
+                            to_t = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
@@ -442,7 +494,10 @@ class SimplePlotter(object):
 
         monte_carlo_agent = getattr(self, 'monte_carlo')
 
-        u_mc = monte_carlo_agent.mean_us[from_t:]
+        if to_t is None:
+            to_t = monte_carlo_agent.mean_Qs.shape[0]
+
+        u_mc = monte_carlo_agent.mean_us[from_t:to_t]
 
         if color_codes is None:
             color_codes = {'EUB': '#f30894',
@@ -468,8 +523,8 @@ class SimplePlotter(object):
             #Q = np.array(agent.logger['Q'])
             #u = np.array(agent.logger['u'])
 
-            Q  = agent.mean_Qs[from_t:] 
-            u  = agent.mean_us[from_t:]
+            Q  = agent.mean_Qs[from_t:to_t] 
+            u  = agent.mean_us[from_t:to_t]
 
             for idx, sa in enumerate(state_actions):
                 
@@ -511,9 +566,9 @@ class SimplePlotter(object):
                                   label = r'$Q^{*,\mathcal{W}}$', alpha = 0.7)
 
             handles, labels = axes[idx].get_legend_handles_labels()
-            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
 
-            plt.tight_layout(rect=[0, 0.22, 1, 0.95])
+            plt.tight_layout(rect=rect)
 
             figures[agent_name] = fig
 
@@ -523,7 +578,8 @@ class SimplePlotter(object):
         
         return figures
 
-    def plot_Q_u_comparison_one_plot(self, figsize = (12, 12), color_codes = None, from_t = 0, list_agents = None):
+    def plot_Q_u_comparison_one_plot(self, figsize = (12, 12), color_codes = None, from_t = 0, to_t = None,
+                                     list_agents = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
@@ -563,8 +619,11 @@ class SimplePlotter(object):
 
                 agent = getattr(self, agent_name)
 
-                Q  = agent.mean_Qs[from_t:] 
-                u  = agent.mean_us[from_t:]
+                if to_t is None:
+                    to_t = agent.mean_Qs.shape[0]
+
+                Q  = agent.mean_Qs[from_t:to_t] 
+                u  = agent.mean_us[from_t:to_t]
 
                 if i == 0:
                     axes[idx].plot(Q[:, sa[0], sa[1]], color = '#3138fb', label = r'$\mathbb{E}_{\theta}[Q^{*,\mathcal{W}|\theta_t}]$',
@@ -602,9 +661,9 @@ class SimplePlotter(object):
 
 
         handles, labels = axes[idx].get_legend_handles_labels()
-        fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
+        fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
 
-        plt.tight_layout(rect=[0, 0.22, 1, 0.95])
+        plt.tight_layout(rect=rect)
 
         fig.savefig(self.foldername + '/' + agent_name + '_Q')
 
@@ -614,7 +673,7 @@ class SimplePlotter(object):
 
 
     def plot_state_freq(self, list_agents = None, figsize = (12,10),
-                        which = 'all', title = None, colors = {'mean': '#3138fb', 'var': '#3138fb'},
+                        which = 'all', title = None, colors = None,
                         capsize = 5, rect = [0, 0.22, 1, 0.95]):
         '''
         Implement so that it shows in intervals instead of 10
@@ -667,8 +726,11 @@ class SimplePlotter(object):
 
             agent = getattr(self, agent_name)
 
+            this_color = np.random.rand(3,)
+
             for i in range(10):
-                axes[i].bar(states, mean_state_freq[i, :], yerr=sd_state_freq[i, :], capsize=capsize)
+                axes[i].bar(states, mean_state_freq[i, :], yerr=sd_state_freq[i, :], capsize=capsize, 
+                            color = colors[agent_name] if colors is not None else this_color, edgecolor = 'black')
 
                 axes[i].set_xticks(states)
 
@@ -682,7 +744,7 @@ class SimplePlotter(object):
             
             fig.savefig(self.foldername + '/' + agent_name + '_state_freqs')
 
-            plt.tight_layout(rect=[0, 0.22, 1, 0.95])
+            plt.tight_layout(rect=rect)
 
             plt.show()
     

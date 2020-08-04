@@ -107,7 +107,7 @@ class ActionSelector(object):
         CovQ = CovQ.reshape(len(self.agent._env_states)*len(self.agent._env_actions), \
                             len(self.agent._env_states)*len(self.agent._env_actions))
         
-        #CovQ[np.diag_indices_from(CovQ)] = self.u.reshape(-1)            
+        CovQ[np.diag_indices_from(CovQ)] = self.agent.u.reshape(-1)            
         # Sample
         
         true_Q = np.random.multivariate_normal(mean = fl_Q, cov = CovQ)
