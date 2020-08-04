@@ -196,6 +196,45 @@ class Agent(object):
 
         return Q
     
+    def get_covariance_Q_old(self):
+        ''' 
+        Computes Cov(Q(s,a), Q(s',a'))
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # First we need to get E[Q(s,a)Q(s',a')]
+        first_term_ = np.zeros((len(self._env_states), \
+                               len(self._env_actions), \
+                               len(self._env_states), \
+                               len(self._env_actions)))
+
+        R = self.get_moment_rewards_matrix(which_moment = 1)
+        D = self.get_moment_dynamics_matrix(which_moment = 1)
+
+        E_Q_E_R = np.einsum('ij,km->ijkm', self.Q, R)
+
+        converged = False
+        it = 0
+        while not converged:
+            first_term = deepcopy(E_Q_E_R)
+            second_term = np.zeros((len(self._env_states), len(self._env_actions)))
+            for s_ in self._env_states:
+                for a_ in self._env_actions:
+                    second_term += self.pi[s_,a_]*D[:,s_,:]*first_term_[:,:,s_,a_]
+            
+            first_term += self.gamma * second_term
+
+            if np.max(np.abs(first_term_ - first_term)) < 0.001 or it >= self.dp_maxit:
+                converged = True
+            
+            first_term_  = first_term
+            it += 1
+        
+        CovQ = first_term - np.einsum('ij,km->ijkm', self.Q, self.Q)
+
+        return CovQ
+    
     def get_covariance_Q(self):
         ''' 
         Computes Cov(Q(s,a), Q(s',a'))
@@ -212,27 +251,17 @@ class Agent(object):
         R = self.get_moment_rewards_matrix(which_moment = 1)
         D = self.get_moment_dynamics_matrix(which_moment = 1)
 
-        #E_Q_E_R = np.zeros(first_term.shape)
-        #for s in self._env_states:
-        #    for a in self._env_actions:
-        #        for s_ in self._env_states:
-        #            for a_ in self._env_actions:
-        #                E_Q_E_R[s,a,s_,a_] = self.Q[s,a]*R[s_,a_]
-
         E_Q_E_R = np.einsum('ij,km->ijkm', self.Q, R)
 
         converged = False
         it = 0
         while not converged:
-            first_term = deepcopy(E_Q_E_R)
-            second_term = np.zeros((len(self._env_states), len(self._env_actions)))
-            for s_ in self._env_states:
-                for a_ in self._env_actions:
-                    second_term += self.pi[s_,a_]*D[:,s_,:]*first_term_[:,:,s_,a_]
+            first_term  = deepcopy(E_Q_E_R)
+            second_term = np.einsum('jd,ijk,abjd->abik', self.pi, D, first_term_)
             
             first_term += self.gamma * second_term
 
-            if np.max(np.abs(first_term_ - first_term)) < 0.001 or it >= self.dp_maxit:
+            if np.max(np.abs(first_term_ - first_term)) < 0.01 or it >= self.dp_maxit:
                 converged = True
             
             first_term_  = first_term
@@ -264,6 +293,44 @@ class Agent(object):
 
         it  = 0  
         while not converged:
+
+            second_term = 0
+            first_term  = np.einsum('ij, ij, aib->ab', self.pi, Q_2, var_p)
+            second_term = np.einsum('ij, ij, aib->ab', self.pi, u_, E_p_2)
+            third_term  = np.einsum('ij, ij, aib->ab', self.pi, u_, var_p)
+            
+            u = var_E_R + (self.gamma**2) * (first_term + second_term + third_term)
+
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+                converged = True
+            
+            u_  = u
+            it += 1 
+        
+        return u
+
+    def get_predictive_u_old(self):
+        '''
+        Computes the epistemic uncertainty of return directly
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # Get all necessary matrices
+        var_E_R = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
+        Q_2     = self.Q**2
+        #var_p   = self.get_moment_dynamics_matrix(which_moment = 2)
+        #var_p   = var_p - self.get_moment_dynamics_matrix(which_moment = 1)**2
+        var_p   = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
+        E_p_2   = self.get_moment_dynamics_matrix(which_moment = 1)**2
+
+        converged = False
+
+        #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        u_ = np.zeros(self.Q.shape)
+
+        it  = 0  
+        while not converged:
             #u           = deepcopy(var_E_R) ### it works without the deepcopy
             second_term = 0
             for s in self._env_states:
@@ -273,7 +340,7 @@ class Agent(object):
             
             u = var_E_R + (self.gamma**2) * second_term
 
-            if np.max(np.abs(u_ - u)) < 0.05 or it >= self.dp_maxit:
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
             
             u_  = u
@@ -281,7 +348,36 @@ class Agent(object):
         
         return u
     
-    def get_EUB_u(self):
+    def get_EUB_u_old(self):
+        '''
+        Computes the epistemic uncertainty of return
+        using our EUB bound approach
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # Get all necessary matrices
+        Q       = self.Q
+        E_p     = self.get_moment_dynamics_matrix(which_moment = 1)
+        Cov_p   = self.get_dynamics_covariance_tensor()
+        Cov_Q   = self.get_covariance_Q()
+
+
+        u = self.get_predictive_u()
+        bound_term = 0
+        for s in self._env_states:
+            for a in self._env_actions:
+                for s_ in self._env_states:
+                    for a_ in self._env_actions:
+                        if s == s_ or a == a_:
+                            continue
+                        bound_term += (self.pi[s,a]**2)*(np.abs(Cov_Q[s,a,s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
+                            E_p[:,s,:]*E_p[:,s_,:]) + \
+                                np.abs(Q[s,a]*Q[s_,a_]*Cov_p[s,s_,:,:]))
+        
+        return u + 2*(self.gamma**2)*bound_term
+    
+    def get_EUB_u3(self):
         '''
         Computes the epistemic uncertainty of return
         using our EUB bound approach
@@ -317,9 +413,9 @@ class Agent(object):
                         for a_ in self._env_actions:
                             if s == s_ or a == a_:
                                 continue
-                            third_term += (self.pi[s,a]**2)*np.sqrt(u[s,a]*u[s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
+                            third_term += (self.pi[s,a]**2)*(np.sqrt(u[s,a]*u[s_,a_])*(np.abs(Cov_p[s,s_,:,:]) + \
                                 E_p[:,s,:]*E_p[:,s_,:]) + \
-                                    np.abs(Q[s,a]*Q[s_,a_]*Cov_p[s,s_,:,:])
+                                    np.abs(Q[s,a]*Q[s_,a_]*Cov_p[s,s_,:,:]))
 
                     bound_term += third_term 
 
@@ -333,7 +429,57 @@ class Agent(object):
         
         return u
     
-    def get_UBE_u(self):
+    def get_EUB_u(self):
+        '''
+        Computes the epistemic uncertainty of return
+        using our EUB bound approach
+        '''
+        if self.Q is None:
+            self.get_Q()
+        
+        # Get all necessary matrices
+        var_E_R = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
+        Q       = self.Q
+        var_p   = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
+        E_p     = self.get_moment_dynamics_matrix(which_moment = 1)
+        Cov_p   = self.get_dynamics_covariance_tensor()
+        Cov_Q   = self.get_covariance_Q() 
+
+        converged = False
+
+        #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
+        u_ = np.zeros(self.Q.shape)
+
+        it  = 0
+
+        turner = np.ones((len(self._env_states), len(self._env_actions), \
+                          len(self._env_states), len(self._env_actions)))
+        for s in self._env_states:
+            for a in self._env_actions:
+                turner[s,a,s,a] = 0
+
+        while not converged:
+            u           = deepcopy(var_E_R)
+            
+            first_term  = np.einsum('ij, ij, aib->ab', self.pi, Q**2, var_p)
+            second_term = np.einsum('ij, ij, aib->ab', self.pi, u_, E_p**2)
+            third_term  = np.einsum('ij, ij, aib->ab', self.pi, u_, var_p)
+
+            bound_term  = np.einsum('ijkl, ij, ijkl, ikab->ab', turner, self.pi**2, np.abs(Cov_Q), np.abs(Cov_p))
+            bound_term += np.einsum('ijkl, ij, ijkl, aib, akb->ab', turner, self.pi**2, np.abs(Cov_Q), E_p, E_p)
+            bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, np.abs(Cov_p))
+            
+            u = var_E_R + (self.gamma**2) * (first_term + second_term + third_term) + 2*(self.gamma**2)*bound_term
+            
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+                converged = True
+            
+            u_  = u
+            it += 1 
+        
+        return u
+    
+    def get_UBE_u_old(self):
         '''
         Computes the epistemic uncertainty of return
         using the approach in UBE paper
@@ -366,7 +512,47 @@ class Agent(object):
             
             u += (self.gamma**2) * second_term
 
-            if np.max(np.abs(u_ - u)) < 0.05 or it >= self.dp_maxit:
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
+                converged = True
+
+            u_  = u
+            it += 1
+        
+        return u
+    
+    def get_UBE_u(self):
+        '''
+        Computes the epistemic uncertainty of return
+        using the approach in UBE paper
+        '''
+        if self.Q is None:
+            self.get_Q()
+
+        # Get all necessary matrices
+        var_p = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
+        E_p   = self.get_moment_dynamics_matrix(which_moment = 1)
+
+        # First we calculate local uncertainty
+        local_u = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
+        
+        #local_u += (Q_max**2) * np.einsum('ijk, ijk->ij', var_p, 1/E_p)
+        
+        Q_max = 10 # This is the Q_max term that bounds Q, we arbitrarily set it to 10 here
+        for s_ in self._env_states:
+            local_u += (Q_max**2) * var_p[:,s_,:]/E_p[:,s_,:]
+        
+        # Now we compute the rest using DP
+        converged = False
+
+        it  = 0
+        u_ = np.zeros(self.Q.shape)
+        while not converged:
+            u = deepcopy(local_u)
+            second_term = np.einsum('ij,aib,ij->ab', self.pi, E_p, u_)
+            
+            u += (self.gamma**2) * second_term
+
+            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
 
             u_  = u
