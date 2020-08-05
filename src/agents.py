@@ -425,6 +425,12 @@ class Agent(object):
         if self.u_method == 'predictive' and self.red_method == 'fast':
             return self.get_predictive_reduction_u(state)
         
+        if self.u_method == 'EUB' and self.red_method == 'fast':
+            return self.get_EUB_reduction_u(state)
+        
+        if self.u_method == 'UBE' and self.red_method == 'fast':
+            return self.get_UBE_reduction_u(state)
+
         self.log_this = False
         # Available actions
         actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
@@ -438,9 +444,10 @@ class Agent(object):
 
         for a in actions:
             old_probability = copy_D[(state, a)].get_predictive_moment(1)
+            mean_r          = copy_R[(state, a)].get_predictive_moment(1)
             for s_ in self._env_states:
 
-                self._R_[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+                self._R_[(state, a)].update(self.observed_r[(state, a)] + [mean_r])
 
                 self._D_[(state, a)].update(self.observed_d[(state, a)] + [s_])
 
@@ -457,6 +464,102 @@ class Agent(object):
         self.log_this = True
         
         return old_u[state, :] - new_uncert
+
+    def get_EUB_reduction_u(self, state):
+
+        self.log_this = False
+        # Available actions
+        actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+        new_uncert = np.zeros(len(actions))
+
+        old_u = deepcopy(self.u)
+
+        copy_R = deepcopy(self._R_)
+        copy_D = deepcopy(self._D_)
+
+        for a in actions:
+
+            self._R_[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+
+            self._D_[(state, a)].update(self.observed_d[(state, a)] + [copy_D[(state, a)].get_most_probable_outcome()])
+
+            # Now recompute u
+            self.get_u()
+
+            new_uncert[a] += self.u[state, a]
+
+            # Reset the models
+            self._R_ = deepcopy(copy_R)
+            self._D_ = deepcopy(copy_D)
+        
+        self.u = old_u
+        self.log_this = True
+        
+        return old_u[state, :] - new_uncert
+
+
+    def get_UBE_reduction_u(self, state):
+        
+        #Computes the reduction in predictive uncertainty from a given state
+
+        #It uses the formula for predictive u
+        
+        # Available actions
+        actions = np.array([pair[1] for pair in self._sa_pairs if pair[0] == state])
+
+        # Firstly populate all necessary vectors
+        red_var_1 = np.zeros(len(actions)) # thats the rewards reduction
+
+        old_E     = np.zeros((len(self._env_states), len(actions)))
+        old_v     = np.zeros((len(self._env_states), len(actions)))
+
+        new_E     = np.zeros((len(self._env_states), len(actions)))
+        new_v     = np.zeros((len(self._env_states), len(actions)))
+
+        Q_max     = 10 
+        
+        copy_R_1 = deepcopy(self._R_)
+        copy_D_1 = deepcopy(self._D_)
+        for a in actions:
+            copy_R = deepcopy(self._R_)
+
+            red_var_1[a] = copy_R[(state, a)].get_predictive_moment('epistemic_variance')
+            copy_R[(state, a)].update(self.observed_r[(state, a)] + [copy_R[(state, a)].get_predictive_moment(1)])
+
+            red_var_1[a] -= copy_R[(state, a)].get_predictive_moment('epistemic_variance')
+
+            old_E[:, a] = copy_D_1[(state, a)].get_predictive_moment(1)
+            old_v[:, a] = copy_D_1[(state, a)].get_predictive_moment('epistemic_variance')
+            
+
+            for s_ in self._env_states:
+                copy_D = deepcopy(copy_D_1)
+
+                copy_D[(state, a)].update(self.observed_d[(state, a)] + [s_])
+
+                new_E[:, a] += old_E[s_,a]*copy_D[(state, a)].get_predictive_moment(1)
+                new_v[:, a] += old_E[s_,a]*copy_D[(state, a)].get_predictive_moment('epistemic_variance')
+
+        self._R_ = deepcopy(copy_R_1)
+        self._D_ = deepcopy(copy_D_1)
+
+        if self.Q is None:
+            self.get_Q()
+        
+        #local_red = 0
+        #for s_ in self._env_states:
+        #    local_red += (Q_max**2)*(old_v[s_,:]/old_E[s_,:] - new_v[s_,:]/new_E[s_,:])
+        #local_red +=  red_var_1
+        print(old_v/old_E)
+        print(new_v/new_E)
+        local_red = red_var_1 + (Q_max**2)*np.einsum('ij->j', old_v/old_E - new_v/new_E)
+        C         = old_E[state, :] - new_E[state, :]
+
+        u_red = local_red/(1-(self.gamma**2)*self.pi[state,:]*C)
+
+        return u_red 
+
 
     def get_predictive_reduction_u(self, state):
         

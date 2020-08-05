@@ -147,7 +147,7 @@ class SimplePlotter(object):
                 agent.sd_regret_s        = np.sqrt(np.var(regrets[success], axis = 0))
 
                 agent.mean_best_action_s = np.mean(best_a[success], axis = 0)
-                agent.sd_best_action_s   = np.sqrt(np.var(best_a[success], axis = 0))
+                agent.sd_best_action_s   = np.var(best_a[success], axis = 0)
 
                 agent.mean_state_freq_s  = np.mean(state_freq[success], axis = 0)
                 agent.sd_state_freq_s    = np.var(state_freq[success], axis = 0)
@@ -164,7 +164,7 @@ class SimplePlotter(object):
                 agent.sd_regret_a_s        = np.sqrt(np.var(regrets[almost_success], axis = 0))
 
                 agent.mean_best_action_s_a = np.mean(best_a[almost_success], axis = 0)
-                agent.sd_best_action_s_a   = np.sqrt(np.var(best_a[almost_success], axis = 0))
+                agent.sd_best_action_s_a   = np.var(best_a[almost_success], axis = 0)
 
                 agent.mean_state_freq_a_s  = np.mean(state_freq[almost_success], axis = 0)
                 agent.sd_state_freq_a_s    = np.var(state_freq[almost_success], axis = 0)
@@ -179,7 +179,7 @@ class SimplePlotter(object):
             agent.sd_state_freq    = np.var(state_freq, axis = 0)
 
             agent.mean_best_action = np.mean(best_a, axis = 0)
-            agent.sd_best_action   = np.sqrt(np.var(best_a, axis = 0))
+            agent.sd_best_action   = np.var(best_a, axis = 0)
 
             agent.mean_step_time   = np.mean(step_time, axis = 0)
             agent.sd_step_time     = np.sqrt(np.var(step_time, axis = 0))
