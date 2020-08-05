@@ -371,7 +371,7 @@ class Agent(object):
         #bound_term += np.einsum('ijkl, ij, ijkl, aib, akb->ab', turner, self.pi**2, Cov_Q, E_p, E_p)
         #bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, Cov_p)
 
-        #u += 2*(self.gamma**2)*bound_term
+        u += 2*(self.gamma**2)*bound_term
 
         #u = np.abs(u)
         
