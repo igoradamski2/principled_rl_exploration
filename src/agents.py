@@ -307,45 +307,6 @@ class Agent(object):
             it += 1 
         
         return u
-
-    def get_predictive_u_old(self):
-        '''
-        Computes the epistemic uncertainty of return directly
-        '''
-        if self.Q is None:
-            self.get_Q()
-        
-        # Get all necessary matrices
-        var_E_R = self.get_moment_rewards_matrix(which_moment = 'epistemic_variance')
-        Q_2     = self.Q**2
-        #var_p   = self.get_moment_dynamics_matrix(which_moment = 2)
-        #var_p   = var_p - self.get_moment_dynamics_matrix(which_moment = 1)**2
-        var_p   = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
-        E_p_2   = self.get_moment_dynamics_matrix(which_moment = 1)**2
-
-        converged = False
-
-        #self.pi = np.ones((len(self._env_states), len(self._env_actions)))
-        u_ = np.zeros(self.Q.shape)
-
-        it  = 0  
-        while not converged:
-            #u           = deepcopy(var_E_R) ### it works without the deepcopy
-            second_term = 0
-            for s in self._env_states:
-                for a in self._env_actions:
-                    second_term += self.pi[s,a]*(Q_2[s,a]*var_p[:,s,:] + \
-                        u_[s,a]*(E_p_2[:,s,:] + var_p[:,s,:]))
-            
-            u = var_E_R + (self.gamma**2) * second_term
-
-            if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
-                converged = True
-            
-            u_  = u
-            it += 1 
-        
-        return u
     
     def get_EUB_u(self):
         '''
@@ -361,7 +322,7 @@ class Agent(object):
         var_p   = self.get_moment_dynamics_matrix(which_moment = 'epistemic_variance')
         E_p     = self.get_moment_dynamics_matrix(which_moment = 1)
         Cov_p   = self.get_dynamics_covariance_tensor()
-        Cov_Q   = self.get_covariance_Q() 
+        #Cov_Q   = self.get_covariance_Q() 
 
         converged = False
 
@@ -390,7 +351,7 @@ class Agent(object):
             #bound_term += np.einsum('ijkl, ij, ij, kl, aib, akb->ab', turner, self.pi**2, np.sqrt(var_E_R), np.sqrt(var_E_R), E_p, E_p)
             #bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, np.abs(Cov_p))
             
-            u = var_E_R + (self.gamma**2) * (first_term + second_term + third_term) + 2*(self.gamma**2)*bound_term
+            u = var_E_R + (self.gamma**2) * (first_term + second_term + third_term) #+ 2*(self.gamma**2)*bound_term
             
             if np.max(np.abs(u_ - u)) < 0.01 or it >= self.dp_maxit:
                 converged = True
@@ -398,13 +359,13 @@ class Agent(object):
             u_  = u
             it += 1 
         
-        #bound_term  = np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, np.sqrt(u), np.sqrt(u), np.abs(Cov_p))
-        #bound_term += np.einsum('ijkl, ij, ij, kl, aib, akb->ab', turner, self.pi**2, np.sqrt(u), np.sqrt(u), E_p, E_p)
-        #bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, np.abs(Cov_p))
-
-        bound_term  = np.einsum('ijkl, ij, ijkl, ikab->ab', turner, self.pi**2, np.abs(Cov_Q), np.abs(Cov_p))
-        bound_term += np.einsum('ijkl, ij, ijkl, aib, akb->ab', turner, self.pi**2, np.abs(Cov_Q), E_p, E_p)
+        bound_term  = np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, np.sqrt(u), np.sqrt(u), np.abs(Cov_p))
+        bound_term += np.einsum('ijkl, ij, ij, kl, aib, akb->ab', turner, self.pi**2, np.sqrt(u), np.sqrt(u), E_p, E_p)
         bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, np.abs(Cov_p))
+
+        #bound_term  = np.einsum('ijkl, ij, ijkl, ikab->ab', turner, self.pi**2, np.abs(Cov_Q), np.abs(Cov_p))
+        #bound_term += np.einsum('ijkl, ij, ijkl, aib, akb->ab', turner, self.pi**2, np.abs(Cov_Q), E_p, E_p)
+        #bound_term += np.einsum('ijkl, ij, ij, kl, ikab->ab', turner, self.pi**2, Q, Q, np.abs(Cov_p))
 
         #bound_term  = np.einsum('ijkl, ij, ijkl, ikab->ab', turner, self.pi**2, Cov_Q, Cov_p)
         #bound_term += np.einsum('ijkl, ij, ijkl, aib, akb->ab', turner, self.pi**2, Cov_Q, E_p, E_p)
