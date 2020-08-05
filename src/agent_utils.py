@@ -150,7 +150,7 @@ class SimplePlotter(object):
                 agent.sd_best_action_s   = np.sqrt(np.var(best_a[success], axis = 0))
 
                 agent.mean_state_freq_s  = np.mean(state_freq[success], axis = 0)
-                agent.sd_state_freq_s    = np.sqrt(np.var(state_freq[success], axis = 0))
+                agent.sd_state_freq_s    = np.var(state_freq[success], axis = 0)
 
                 agent.mean_Qs_s          = np.mean(Qs[success], axis = 0)
                 agent.sd_Qs_s            = np.sqrt(np.var(Qs[success], axis = 0))
@@ -167,7 +167,7 @@ class SimplePlotter(object):
                 agent.sd_best_action_s_a   = np.sqrt(np.var(best_a[almost_success], axis = 0))
 
                 agent.mean_state_freq_a_s  = np.mean(state_freq[almost_success], axis = 0)
-                agent.sd_state_freq_a_s    = np.sqrt(np.var(state_freq[almost_success], axis = 0))
+                agent.sd_state_freq_a_s    = np.var(state_freq[almost_success], axis = 0)
 
                 agent.mean_Qs_a_s          = np.mean(Qs[almost_success], axis = 0)
                 agent.sd_Qs_a_s            = np.sqrt(np.var(Qs[almost_success], axis = 0))
@@ -176,7 +176,7 @@ class SimplePlotter(object):
                 agent.sd_us_a_s            = np.sqrt(np.var(us[almost_success], axis = 0))
             
             agent.mean_state_freq  = np.mean(state_freq, axis = 0)
-            agent.sd_state_freq    = np.sqrt(np.var(state_freq, axis = 0))
+            agent.sd_state_freq    = np.var(state_freq, axis = 0)
 
             agent.mean_best_action = np.mean(best_a, axis = 0)
             agent.sd_best_action   = np.sqrt(np.var(best_a, axis = 0))
@@ -206,7 +206,10 @@ class SimplePlotter(object):
     def plot_regret(self, list_agents = None, color_codes = None, 
                     figsize = (12,8), title = None, legend_codes = None,
                     which = 'all', rect = [0, 0.1, 1, 0.9], 
-                    bbox = (0.5, -0.25)):
+                    bbox = (0.5, -0.25),
+                    suptitle_fs = 25, xy_label_fs = 18, 
+                    titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, 
+                    ncol = None, dpi = 200):
         '''
         Plots regret and % of best action
         '''
@@ -217,7 +220,7 @@ class SimplePlotter(object):
         ax_reg = fig.add_subplot(211)
         ax_ba  = fig.add_subplot(212)
 
-        fig.suptitle(title, fontsize=25)
+        fig.suptitle(title, fontsize=suptitle_fs)
 
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
@@ -273,27 +276,34 @@ class SimplePlotter(object):
                                 alpha=0.33, linestyle = 'dashed',
                                 color = color_codes[agent_name] if color_codes is not None else this_color)
                             
-            ax_ba.set_xlabel('t', fontsize = 16)
+            ax_ba.set_xlabel('t', fontsize = xy_label_fs)
             
             ax_reg.axvline(x = agent.mean_first_t_opt,
                            color = color_codes[agent_name] if color_codes is not None else this_color)
+            
+            ax_reg.tick_params(axis='both', labelsize=ticks_fs)
+            ax_ba.tick_params(axis='both', labelsize=ticks_fs)
         
-        ax_reg.set_title('Online regret', fontsize = 16)
-        ax_ba.set_title('% of time best action is chosen', fontsize = 16)
+        ax_reg.set_title('Online regret', fontsize = titles_fs)
+        ax_ba.set_title('% of time best action is chosen', fontsize = titles_fs)
 
         #ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
-        ax_ba.legend(loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+        ax_ba.legend(loc='lower center', fontsize = legend_fs, 
+                     bbox_to_anchor=bbox, ncol = ncol if ncol is not None else 1)
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/regret')
+        fig.savefig(self.foldername + '/regret', dpi = dpi)
         
         plt.show()
     
     def plot_regret_noerr(self, list_agents = None, color_codes = None, 
                     figsize = (12,8), title = None, legend_codes = None,
                     which = 'all', rect = [0, 0.1, 1, 0.9], 
-                    bbox = (0.5, -0.25)):
+                    bbox = (0.5, -0.25),
+                    suptitle_fs = 25, xy_label_fs = 18, 
+                    titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19,
+                    ncol = None, dpi = 200):
         '''
         Plots regret and % of best action
         '''
@@ -304,7 +314,7 @@ class SimplePlotter(object):
         ax_reg = fig.add_subplot(211)
         ax_ba  = fig.add_subplot(212)
 
-        fig.suptitle(title, fontsize=25)
+        fig.suptitle(title, fontsize=suptitle_fs)
 
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
@@ -350,27 +360,32 @@ class SimplePlotter(object):
             ax_ba.plot(best_action, label = legend_codes[agent_name] + add_string if legend_codes is not None else agent_name + add_string,
                        color = color_codes[agent_name] if color_codes is not None else this_color)
                             
-            ax_ba.set_xlabel('t', fontsize = 16)
+            ax_ba.set_xlabel('t', fontsize = xy_label_fs)
             
             ax_reg.axvline(x = agent.mean_first_t_opt,
                            color = color_codes[agent_name] if color_codes is not None else this_color)
+            
+            ax_reg.tick_params(axis='both', labelsize=ticks_fs)
+            ax_ba.tick_params(axis='both', labelsize=ticks_fs)
         
-        ax_reg.set_title('Online regret', fontsize = 16)
-        ax_ba.set_title('% of time best action is chosen', fontsize = 16)
+        ax_reg.set_title('Online regret', fontsize = titles_fs)
+        ax_ba.set_title('% of time best action is chosen', fontsize = titles_fs)
 
         #ax_reg.legend(loc='lower center', fontsize = 16, bbox_to_anchor=(0.5, 0))
-        ax_ba.legend(loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+        ax_ba.legend(loc='lower center', fontsize = legend_fs, 
+                     bbox_to_anchor=bbox, ncol = ncol if ncol is not None else 1)
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/regret')
+        fig.savefig(self.foldername + '/regret_noerr', dpi = dpi)
         
         plt.show()
 
-    
     def plot_Q_u(self, list_agents = None, state_actions = None, figsize = (20,20),
                  which = 'all', title = None, colors = None,
-                 bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
+                 bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
+                 suptitle_fs = 25, xy_label_fs = 18, 
+                 titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 200):
         '''
         Plots the evolution of Q and u on plot grids
         for specified state-action pairs or for all if unspecified
@@ -432,7 +447,7 @@ class SimplePlotter(object):
             fig.subplots_adjust(hspace = .3, wspace=.2)
 
             add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
-            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=25)
+            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=suptitle_fs)
 
             axes = axes.ravel()
 
@@ -450,7 +465,7 @@ class SimplePlotter(object):
                                             color = colors[agent_name]['var'] if colors is not None else this_color,
                                             label = r'$\pm 2$Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$' if not np.all(u[:, sa[0], sa[1]]==0) else None)
 
-                axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
+                axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
                 #axes[idx].x_label('Iteration') 
 
                 # Plot optmial Q for reference
@@ -459,19 +474,23 @@ class SimplePlotter(object):
                                   label = r'$Q^{*,\mathcal{W}}$', alpha = 0.7)
                 
                 if idx >= (width*(height-1)):
-                    axes[idx].set_xlabel('t', fontsize = 16)
+                    axes[idx].set_xlabel('t', fontsize = xy_label_fs)
 
                 if idx % width == 0:
-                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = xy_label_fs) 
+                
+                axes[idx].tick_params(axis='both', labelsize=ticks_fs)
 
             handles, labels = axes[idx].get_legend_handles_labels()
-            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+            fig.legend(handles, labels, loc='lower center', 
+                      fontsize = legend_fs, bbox_to_anchor=bbox,
+                      ncol = 3)
 
             plt.tight_layout(rect = rect)
 
             figures[agent_name] = fig
 
-            fig.savefig(self.foldername + '/' + agent_name + '_Q')
+            fig.savefig(self.foldername + '/' + agent_name + '_Q', dpi = dpi)
 
             plt.show()
     
@@ -674,7 +693,9 @@ class SimplePlotter(object):
 
     def plot_state_freq(self, list_agents = None, figsize = (12,10),
                         which = 'all', title = None, colors = None,
-                        capsize = 5, rect = [0, 0.22, 1, 0.95]):
+                        capsize = 5, rect = [0, 0.22, 1, 0.95],
+                        suptitle_fs = 25, xy_label_fs = 18, 
+                        titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 200):
         '''
         Implement so that it shows in intervals instead of 10
         '''
@@ -720,7 +741,7 @@ class SimplePlotter(object):
                                             facecolor='w', edgecolor='k')
             
             add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
-            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=25)
+            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=suptitle_fs)
 
             axes = axes.ravel()
 
@@ -734,17 +755,19 @@ class SimplePlotter(object):
 
                 axes[i].set_xticks(states)
 
-                axes[i].set_title('After step = {}'.format((i+1)*int(len(agent.memory_buffer)/10)), fontsize = 16)
+                axes[i].set_title('After step = {}'.format((i+1)*int(len(agent.memory_buffer)/10)), fontsize = titles_fs)
 
                 if i >= 5:
-                    axes[i].set_xlabel('State', fontsize = 16)
+                    axes[i].set_xlabel('State', fontsize = xy_label_fs)
 
                 if i % 5 == 0:
-                    axes[i].set_ylabel('Visited frequency', fontsize = 16) 
+                    axes[i].set_ylabel('Visited frequency', fontsize = xy_label_fs) 
+                
+                axes[i].tick_params(axis='both', labelsize=ticks_fs)
             
-            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs')
-
             plt.tight_layout(rect=rect)
+            
+            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs', dpi = dpi)
 
             plt.show()
     
