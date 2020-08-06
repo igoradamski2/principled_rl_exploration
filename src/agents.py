@@ -551,8 +551,7 @@ class Agent(object):
         #for s_ in self._env_states:
         #    local_red += (Q_max**2)*(old_v[s_,:]/old_E[s_,:] - new_v[s_,:]/new_E[s_,:])
         #local_red +=  red_var_1
-        print(old_v/old_E)
-        print(new_v/new_E)
+
         local_red = red_var_1 + (Q_max**2)*np.einsum('ij->j', old_v/old_E - new_v/new_E)
         C         = old_E[state, :] - new_E[state, :]
 
