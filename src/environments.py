@@ -825,7 +825,7 @@ class BinaryTree(Environment):
         self.final_reward = params['final_reward'] # Reward at the end
 
         # We need to set a mask for each of the actions
-        W = bernoulli.rvs(0.5, size=2**self.N - 1)
+        #W = bernoulli.rvs(0.5, size=2**self.N - 1)
 
         #uncomment
         W = np.zeros(2**self.N - 1)
@@ -924,7 +924,7 @@ class BinaryTree(Environment):
         at time self.t
         '''
         comp_eps = np.floor(self.t/self.N)
-        return comp_eps * (self.final_reward - (self.N-1)*(self.cost)/self.N) - ((self.t - (comp_eps*self.N)) * (self.cost/self.N))
+        return comp_eps * (self.final_reward - (self.N-1)*(self.cost)/(self.N-1)) - ((self.t - (comp_eps*self.N)) * (self.cost/(self.N-1)))
         
     def get_true_dynamics_matrix(self):
         '''
