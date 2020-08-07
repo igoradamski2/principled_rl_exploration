@@ -1213,6 +1213,8 @@ class BayesianAgent(Agent):
             self.u = self.get_UBE_u()
         if self.u_method == 'EUB':
             self.u = self.get_EUB_u()
+        if self.u_method == 'monte_carlo':
+            _, self.u = self.get_monte_carlo_Q(self.u_method_params)
 
     def make_decision(self, state):
         '''
