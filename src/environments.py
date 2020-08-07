@@ -805,6 +805,177 @@ class MysteryCorridor(Environment):
         
         return cls(params)
 
+class BinaryTree(Environment):
+    '''
+    This is the environment from Osband
+    '''
+    def __init__(self, params):
+        '''
+        Initiates the environment
+
+        Inputs: params -> dict
+            must have attributes:
+                    'N': we form a NxN grid of states : int
+                    'cost': the cost the agent incurs by moving right : +float (POSITIVE)
+                    'final_reward': the reward the agent gets by moving right in rightmost state : list
+        '''
+
+        self.N            = params['N'] # Number of layers
+        self.cost         = params['cost'] # Cost move right (later divided by N)
+        self.final_reward = params['final_reward'] # Reward at the end
+
+        # We need to set a mask for each of the actions
+        W = bernoulli.rvs(0.5, size=2**self.N - 1)
+
+        #uncomment
+        W = np.zeros(2**self.N - 1)
+
+        self.W = W
+
+        # Mount an environment object
+        super(BinaryTree, self).__init__(params['seed'])
+    
+    def get_dynamics(self):
+        '''
+        Returns a function D:(s,a) -> next_state
+        '''
+        def D(s, a):
+
+            if self.W[s] == 0:
+                if a == 0:
+                    new_a = 0
+                if a == 1:
+                    new_a = 1
+            
+            if self.W[s] == 1:
+                if a == 0:
+                    new_a = 1
+                if a == 1:
+                    new_a = 0
+
+            a = new_a
+            if a == 0: # Go left
+                # If we are at the last level then go to 0
+                if s >= (2**(self.N-1) - 1):
+                    return 0
+                else:
+                    return (s+1)*2 - 1
+
+            else:      # Go right
+                # If we are at the last level then go to 0
+                if s >= (2**(self.N-1) - 1):
+                    return 0
+                else:
+                    return (s+1)*2 
+
+        return D
+
+    def get_rewards(self):
+        '''
+        Returns a function R:(s,a,s_) -> reward
+
+        We make the reward function depend only on s,a
+        '''
+        def R(s, a, s_):
+
+            if self.W[s] == 0:
+                if a == 0:
+                    new_a = 0
+                if a == 1:
+                    new_a = 1
+            
+            if self.W[s] == 1:
+                if a == 0:
+                    new_a = 1
+                if a == 1:
+                    new_a = 0
+
+            a = new_a
+            if a == 0: # Go left
+
+                return 0
+
+            else:      # Go right
+
+                if s == (2**self.N - 2):
+                    return self.final_reward
+                else:
+                    return -self.cost/(self.N-1)
+
+        return R
+
+    def get_initial_state(self):
+        return 0
+    
+    def get_all_state_action_pairs(self):
+        '''
+        Returns all possible state-action pairs
+            - populate self._states with all state numbers (np.array)
+            - populate self._actions with all action numbers (np.array)
+            - populate self._sa_pairs with all possible state-action pairs (list of tuples)
+        '''
+        self._states   = np.arange(2**self.N - 1)
+        self._actions  = np.arange(2)
+        self._sa_pairs = [(s,a) for s,a in list(itertools.product(self._states, self._actions))]
+
+    def oracle_agent(self):
+        '''
+        Returns the cumulative reward of the oracle agent
+        at time self.t
+        '''
+        comp_eps = np.floor(self.t/self.N)
+        return comp_eps * (self.final_reward - (self.N-1)*(self.cost)/self.N) - ((self.t - (comp_eps*self.N)) * (self.cost/self.N))
+        
+    def get_true_dynamics_matrix(self):
+        '''
+        Returns the true dynamics matrix
+        '''
+        D = np.zeros((2**self.N - 1, 2**self.N - 1, 2))
+
+        dynamics = self.get_dynamics()
+
+        for state in self._states:
+            for action in self._actions:
+                next_s = dynamics(state, action)
+                D[state, next_s, action] = 1
+
+        return D
+    
+    def get_true_rewards_matrix(self):
+        '''
+        Returns the true rewards matrix
+        '''
+        R = np.zeros((2**self.N - 1, 2))
+
+        rewards = self.get_rewards()
+
+        for state in self._states:
+            for action in self._actions:
+                R[state, action] = rewards(state, action, 0)
+        
+        return R
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        if self.t == self.N:
+            return False
+        else:
+            return False
+    
+    @classmethod
+    def default(cls, **kwargs):
+        params = {'N': 5,
+                  'cost': 0.01,
+                  'final_reward': 1,
+                  'seed': None,
+        }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
+        
+        return cls(params)
+
 class ChainMDP(Environment):
     '''
     This is the environment from Osband
