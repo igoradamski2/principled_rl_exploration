@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sys import stdout
 from scipy.stats import bernoulli
 from time import time
+from scipy import special, stats
 
 from .distributions import Distribution
 
@@ -93,6 +94,7 @@ class Environment(object):
         is_pi_optimal        = np.zeros(num_steps)
         is_pi_almost_optimal = np.zeros(num_steps)
 
+        _oracle = self.oracle_agent()
         i = 0
         for step in tqdm(range(num_steps)):
             
@@ -987,7 +989,150 @@ class ChainMDP(Environment):
         
         return cls(params)
 
+class RandomMDP(Environment):
+
+    def __init__(self, params):
+        '''
+        Initializes the Random MDP environment
+
+        Inputs: params -> dict
+                must have attributes:
+                    'mdp_seed': random seed : int (dont confuse with seed)
+                    'num_states': int
+                    'num_actions' : int
+        '''
+
+        self.mdp_seed    = params['mdp_seed']
+
+        # Transition params
+        self.c = params['c']
         
+        # Rewards params
+        self.mu    = params['mu']
+        self.lmbda = params['lmbda']
+        self.alpha = params['alpha']
+        self.beta  = params['beta']
+
+        self.num_states  = params['num_states']
+        self.num_actions = params['num_actions']
+
+        self.get_all_state_action_pairs()
+
+        # Sample the environment dynamics
+        self._transitions = {}
+        self._rewards     = {}
+        for idx, pair in enumerate(self._sa_pairs):
+            np.random.seed(self.mdp_seed + idx*269)
+            
+            self._transitions[pair] = stats.dirichlet.rvs(alpha = [self.c]*self.num_states, size = 1)[0]
+            
+            tau = stats.gamma.rvs(a = self.alpha, scale = 1/self.beta, size = 1)
+            m = self.mu + stats.norm.rvs(size = 1)*np.sqrt(1/(self.lmbda*tau))
+
+            self._rewards[pair]     = [m, np.sqrt((1/tau))]
+        
+        # Mount an environment object
+        super(RandomMDP, self).__init__(params['seed'])
+    
+    def get_dynamics(self):
+        '''
+        Returns a function D:(s,a) -> next_state
+        '''
+        def D(s, a):
+            np.random.seed()
+            return np.random.choice(np.arange(self.num_states), p = self._transitions[(s,a)])
+        
+        return D
+
+    def get_rewards(self):
+        '''
+        Returns a function R:(s,a,s_) -> reward
+
+        We make the reward function depend only on s,a
+        '''
+        def R(s, a, s_):
+            np.random.seed()
+            return np.random.normal(loc   = self._rewards[(s,a)][0], scale = self._rewards[(s,a)][1])
+
+        return R
+    
+    def get_initial_state(self):
+        np.random.seed(self.mdp_seed)
+        return np.random.choice(np.arange(self.num_states))
+    
+    def get_all_state_action_pairs(self):
+        '''
+        Returns all possible state-action pairs
+            - populate self._states with all state numbers (np.array)
+            - populate self._actions with all action numbers (np.array)
+            - populate self._sa_pairs with all possible state-action pairs (list of tuples)
+        '''
+        self._states   = np.arange(self.num_states)
+        self._actions  = np.arange(self.num_actions)
+        self._sa_pairs = [(s,a) for s,a in list(itertools.product(self._states, self._actions))]
+
+    def oracle_agent(self):
+        '''
+        Returns the cumulative reward of the oracle agent
+        at time self.t assumes that we have optimal_pi
+        '''
+
+        if self.t == 0:
+            # No steps so no cumulative reward initialized
+            optimal_action                 = np.where(self.optimal_pi[self.s, :] == 1)[0][0]
+            self._oracle_cumulative_reward = deepcopy(self._rewards[(self.s, optimal_action)][0])
+        else:
+            optimal_action                  = np.where(self.optimal_pi[self.s, :] == 1)[0][0]
+            self._oracle_cumulative_reward += self._rewards[(self.s, optimal_action)][0]
+        
+        return self._oracle_cumulative_reward
+    
+    def get_true_dynamics_matrix(self):
+        '''
+        Returns the true dynamics matrix
+        '''
+        D = np.zeros((self.num_states,self.num_states,self.num_actions))
+
+        for state in self._states:
+            for action in self._actions:
+                D[state, :, action] = self._transitions[(state, action)]
+
+        return D
+    
+    def get_true_rewards_matrix(self):
+        '''
+        Returns the true rewards matrix
+        '''
+        R = np.zeros((self.num_states, self.num_actions))
+
+        for state in self._states:
+            for action in self._actions:
+                R[state, action] = self._rewards[(state, action)][0]
+        
+        return R
+    
+    def finish_condition(self):
+        '''
+        Returns True/False with respect to some episode terminating condition
+        '''
+        return False
+    
+    @classmethod
+    def default(cls, **kwargs):
+        params = {'num_states': 5,
+                  'num_actions': 3,
+                  'c': 1,
+                  'mu': 0,
+                  'lmbda': 10,
+                  'alpha': 2,
+                  'beta': 2,
+                  'mdp_seed': 2308,
+                  'seed': None,
+        }
+        for arg in kwargs.keys():
+            params[arg] = kwargs[arg]
+        
+        return cls(params)
     
 
 
