@@ -394,7 +394,7 @@ class Agent(object):
         
         #local_u += (Q_max**2) * np.einsum('ijk, ijk->ij', var_p, 1/E_p)
         
-        Q_max = self.u_method * (self.gamma/(1-self.gamma)) # This is the Q_max term that bounds Q, we arbitrarily set it to 10 here
+        Q_max = self.u_method_params * (self.gamma/(1-self.gamma)) # This is the Q_max term that bounds Q, we arbitrarily set it to 10 here
         for s_ in self._env_states:
             local_u += (Q_max**2) * var_p[:,s_,:]/E_p[:,s_,:]
         
