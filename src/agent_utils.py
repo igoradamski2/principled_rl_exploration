@@ -95,6 +95,7 @@ class SimplePlotter(object):
             regrets     = np.zeros((num_repeats, steps))
             best_a      = np.zeros((num_repeats, steps))
             state_freq  = np.zeros((num_repeats, 10, len(self.env._states)))
+            action_freq = np.zeros((num_repeats, 10, len(self.env._actions)))
             step_time   = np.zeros((num_repeats, steps))
 
             Qs          = np.zeros((num_repeats, steps, len(self.env._states), len(self.env._actions)))
@@ -119,6 +120,7 @@ class SimplePlotter(object):
                 regrets[iteration, :]       = agent.regret
                 best_a[iteration, :]        = agent.best_action
                 state_freq[iteration, :, :] = agent.get_state_frequencies()
+                action_freq[iteration,:,:]  = agent.get_action_frequencies()
                 step_time[iteration, :]     = self.env.elapsed_time_per_step
 
                 if agent.success:
@@ -177,6 +179,9 @@ class SimplePlotter(object):
             
             agent.mean_state_freq  = np.mean(state_freq, axis = 0)
             agent.sd_state_freq    = np.var(state_freq, axis = 0)
+
+            agent.mean_action_freq  = np.mean(action_freq, axis = 0)
+            agent.sd_action_freq    = np.var(action_freq, axis = 0)
 
             agent.mean_best_action = np.mean(best_a, axis = 0)
             agent.sd_best_action   = np.var(best_a, axis = 0)
@@ -762,6 +767,87 @@ class SimplePlotter(object):
 
                 if i % 5 == 0:
                     axes[i].set_ylabel('Visited frequency', fontsize = xy_label_fs) 
+                
+                axes[i].tick_params(axis='both', labelsize=ticks_fs)
+            
+            plt.tight_layout(rect=rect)
+            
+            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs', dpi = dpi)
+
+            plt.show()
+    
+
+    def plot_action_freq(self, list_agents = None, figsize = (12,10),
+                        which = 'all', title = None, colors = None,
+                        capsize = 5, rect = [0, 0.22, 1, 0.95],
+                        suptitle_fs = 25, xy_label_fs = 18, 
+                        titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 200):
+        '''
+        Implement so that it shows in intervals instead of 10
+        '''
+        if list_agents is None:
+            list_agents = self.list_agents()
+
+        for agent_name in list_agents:
+
+            agent = getattr(self, agent_name)
+
+            #Q = np.array(agent.logger['Q'])
+            #u = np.array(agent.logger['u'])
+
+            if which == 'all':
+                
+                states = agent._env_actions
+                mean_state_freq = agent.mean_action_freq
+                sd_state_freq   = agent.sd_action_freq
+
+                num = len(agent.success)
+            if which == 'success':
+                if hasattr(agent, 'mean_regret_s'):
+                    
+                    states = agent._env_states
+                    mean_state_freq = agent.mean_state_freq_s
+                    sd_state_freq   = agent.sd_state_freq_s
+
+                    num = len(agent.success)
+                else:
+                    continue
+            if which == 'almost_success':
+                if hasattr(agent, 'mean_regret_s_a'):
+                    
+                    states = agent._env_states
+                    mean_state_freq = agent.mean_state_freq_a_s
+                    sd_state_freq   = agent.sd_state_freq_a_s
+
+                    num = len(agent.almost_success)
+                else:
+                    continue
+
+            fig, axes = plt.subplots(2, 5, figsize=figsize, \
+                                            facecolor='w', edgecolor='k')
+            
+            add_string = ' ({}/{} successful)'.format(num, agent.num_repeats)
+            fig.suptitle(title + add_string if title is not None else agent_name + add_string, fontsize=suptitle_fs)
+
+            axes = axes.ravel()
+
+            agent = getattr(self, agent_name)
+
+            this_color = np.random.rand(3,)
+
+            for i in range(10):
+                axes[i].bar(states, mean_state_freq[i, :], yerr=sd_state_freq[i, :], capsize=capsize, 
+                            color = colors[agent_name] if colors is not None else this_color, edgecolor = 'black')
+
+                axes[i].set_xticks(states)
+
+                axes[i].set_title('After step = {}'.format((i+1)*int(len(agent.memory_buffer)/10)), fontsize = titles_fs)
+
+                if i >= 5:
+                    axes[i].set_xlabel('Action', fontsize = xy_label_fs)
+
+                if i % 5 == 0:
+                    axes[i].set_ylabel('Performed frequency', fontsize = xy_label_fs) 
                 
                 axes[i].tick_params(axis='both', labelsize=ticks_fs)
             

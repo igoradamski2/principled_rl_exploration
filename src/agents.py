@@ -715,6 +715,23 @@ class Agent(object):
             freqs[i, :] = f/np.sum(f)
         
         return freqs
+    
+    def get_action_frequencies(self):
+        '''
+        Returns 10 action frequencies 
+        '''
+        freqs = np.zeros((10, len(self._env_actions)))
+
+        total_time = len(self.memory_buffer)
+        step       = int(total_time/10)
+
+        for i in range(10):
+            f    = np.zeros(len(self._env_actions))
+            u, c = np.unique(np.array(self.memory_buffer)[:(i+1)*step, 1], return_counts = True)
+            f[u.astype(int)] = c
+            freqs[i, :] = f/np.sum(f)
+        
+        return freqs
 
     def initialize_R_D_models(self):
         '''
