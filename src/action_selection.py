@@ -139,6 +139,13 @@ class ActionSelector(object):
             influence[a] = -np.abs((self.agent.Q[state, a] - np.max(np.delete(self.agent.Q[state, :], a)))/tilda_u[a])
         
         f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
+        
+        if np.all(f_influence == 0):
+            f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
+
+        if np.all(f_influence == 0):
+            return np.argmax(influence)
+        
         kg          = f_influence * tilda_u
         action      = np.argmax(kg) 
 
@@ -156,6 +163,9 @@ class ActionSelector(object):
         
         f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
         
+        if np.all(f_influence == 0):
+            return np.argmax(influence)
+            
         kg          = f_influence * tilda_u
         
         action      = np.argmax(kg) 
