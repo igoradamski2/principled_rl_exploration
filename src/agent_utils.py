@@ -853,7 +853,7 @@ class SimplePlotter(object):
             
             plt.tight_layout(rect=rect)
             
-            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs', dpi = dpi)
+            fig.savefig(self.foldername + '/' + agent_name + '_action_freqs', dpi = dpi)
 
             plt.show()
     
