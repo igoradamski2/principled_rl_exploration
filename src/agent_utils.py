@@ -220,8 +220,8 @@ class SimplePlotter(object):
             agent = getattr(self, agent_name)
             
             string  = "Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
-            string += "\n Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
-            string += "\n Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
+            string += "\n Final % of best action of agent {} is {}".format(agent_name, agent.mean_best_action[-1])
+            string += "\n Mean successful time is {}".format(agent.mean_first_t_opt)
             string += "\n"
 
             print("Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1]))
