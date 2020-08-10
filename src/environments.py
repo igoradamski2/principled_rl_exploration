@@ -1294,7 +1294,7 @@ class RandomMDP(Environment):
                   'num_actions': 3,
                   'c': 1,
                   'mu': 0,
-                  'lmbda': 10,
+                  'lmbda': 0.1,
                   'alpha': 2,
                   'beta': 2,
                   'mdp_seed': 2308,

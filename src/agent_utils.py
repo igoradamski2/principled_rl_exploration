@@ -208,6 +208,22 @@ class SimplePlotter(object):
 
             setattr(self, agent_name, agent)
     
+    def print_performance_metrics(self, list_agents = None):
+        ''' 
+        Prints performance metrics
+        '''
+
+        if list_agents is None:
+            list_agents = self.list_agents()
+        
+        for agent_name in list_agents:
+            agent = getattr(self, agent_name)
+            
+            print("Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1]))
+            print("Final % of best action of agent {} is {}".format(agent_name, agent.mean_best_action[-1]))
+            print("Mean successful time is {}".format(agent.mean_first_t_opt))
+            print('\n')
+    
     def plot_regret(self, list_agents = None, color_codes = None, 
                     figsize = (12,8), title = None, legend_codes = None,
                     which = 'all', rect = [0, 0.1, 1, 0.9], 
