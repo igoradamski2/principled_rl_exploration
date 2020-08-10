@@ -219,10 +219,18 @@ class SimplePlotter(object):
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
             
+            string  = "Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
+            string += "\n Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
+            string += "\n Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
+            string += "\n"
+
             print("Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1]))
             print("Final % of best action of agent {} is {}".format(agent_name, agent.mean_best_action[-1]))
             print("Mean successful time is {}".format(agent.mean_first_t_opt))
             print('\n')
+
+            with open(self.foldername + '/report.txt', 'a+') as f:
+                f.write(string)
     
     def plot_regret(self, list_agents = None, color_codes = None, 
                     figsize = (12,8), title = None, legend_codes = None,
@@ -516,7 +524,9 @@ class SimplePlotter(object):
             plt.show()
     
     def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0,
-                            to_t = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
+                            to_t = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
+                            suptitle_fs = 25, xy_label_fs = 18, 
+                            titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 200):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
