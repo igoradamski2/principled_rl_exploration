@@ -603,8 +603,8 @@ class SimplePlotter(object):
                                    top    = top)
 
                 #axes[idx].set_xticklabels(np.arange(Q.shape[0]) + from_t)
-                axes[0].set_xticks(np.arange(0,Q.shape[0]+1, 100))
-                axes[0].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
+                axes[idx].set_xticks(np.arange(0,Q.shape[0]+1, 100))
+                axes[idx].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
 
                 if idx >= (len(state_actions) - num_actions):
                     axes[idx].set_xlabel('t', fontsize = xy_label_fs)
@@ -706,8 +706,8 @@ class SimplePlotter(object):
                 #labels = axes[idx].get_xtickslabels()
                 #print(labels)
                 #axes[idx].set_xticklabels(labels + from_t)
-                axes[0].set_xticks(np.arange(0,Q.shape[0]+1, 100))
-                axes[0].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
+                axes[idx].set_xticks(np.arange(0,Q.shape[0]+1, 100))
+                axes[idx].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
 
                 if idx >= (len(state_actions) - num_actions):
                     axes[idx].set_xlabel('t', fontsize = xy_label_fs)
