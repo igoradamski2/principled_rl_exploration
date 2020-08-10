@@ -526,7 +526,7 @@ class SimplePlotter(object):
     def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0,
                             to_t = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
                             suptitle_fs = 25, xy_label_fs = 18, 
-                            titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 200):
+                            titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 300):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
@@ -564,7 +564,7 @@ class SimplePlotter(object):
 
             fig.subplots_adjust(hspace = .3, wspace=.2)
 
-            fig.suptitle(agent_name + ' estimate', fontsize=25)
+            fig.suptitle(agent_name + ' estimate', fontsize=suptitle_fs)
 
             axes = axes.ravel()
 
@@ -591,7 +591,7 @@ class SimplePlotter(object):
                 axes[idx].plot(Q[:, sa[0], sa[1]] + 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
                               color = 'red',
                               linestyle = '--')
-                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
+                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
 
                 bottom = np.min(Q[:, sa[0], sa[1]] - 2.1*np.sqrt(u[:, sa[0], sa[1]]))
                 top    = np.max(Q[:, sa[0], sa[1]] + 2.1*np.sqrt(u[:, sa[0], sa[1]]))
@@ -602,34 +602,40 @@ class SimplePlotter(object):
                 axes[idx].set_ylim(bottom = bottom, 
                                    top    = top)
 
-                axes[idx].set_xticklabels(np.arange(Q.shape[0]) + from_t)
+                #axes[idx].set_xticklabels(np.arange(Q.shape[0]) + from_t)
+                axes[0].set_xticks(np.arange(0,Q.shape[0]+1, 100))
+                axes[0].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
 
                 if idx >= (len(state_actions) - num_actions):
-                    axes[idx].set_xlabel('t', fontsize = 16)
+                    axes[idx].set_xlabel('t', fontsize = xy_label_fs)
 
                 if idx % num_actions == 0:
-                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = xy_label_fs) 
 
                 # Plot optmial Q for reference
                 axes[idx].axhline(y=self.env.optimal_Q[sa[0], sa[1]], 
                                   color = 'black', linestyle = '--', 
                                   label = r'$Q^{*,\mathcal{W}}$', alpha = 0.7)
+                                
+                axes[idx].tick_params(axis='both', labelsize=ticks_fs)
 
             handles, labels = axes[idx].get_legend_handles_labels()
-            fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+            fig.legend(handles, labels, loc='lower center', fontsize = legend_fs, bbox_to_anchor=bbox)
 
             plt.tight_layout(rect=rect)
 
             figures[agent_name] = fig
 
-            fig.savefig(self.foldername + '/' + agent_name + '_Q')
+            fig.savefig(self.foldername + '/' + agent_name + '_comparison')
 
             plt.show()
         
         return figures
 
     def plot_Q_u_comparison_one_plot(self, figsize = (12, 12), color_codes = None, from_t = 0, to_t = None,
-                                     list_agents = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95]):
+                                     list_agents = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
+                                     suptitle_fs = 25, xy_label_fs = 18, 
+                                     titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 300):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
 
@@ -658,7 +664,7 @@ class SimplePlotter(object):
 
         fig.subplots_adjust(hspace = .3, wspace=.2)
 
-        fig.suptitle('Uncertainty estimates comparison', fontsize=25)
+        fig.suptitle('Uncertainty estimates comparison', fontsize=suptitle_fs)
 
         axes = axes.ravel()
 
@@ -695,27 +701,29 @@ class SimplePlotter(object):
                                        Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
                                             alpha=0.43, linestyle = 'None', color = color_codes[agent_name])
 
-                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = 16)
+                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
 
                 #labels = axes[idx].get_xtickslabels()
                 #print(labels)
                 #axes[idx].set_xticklabels(labels + from_t)
+                axes[0].set_xticks(np.arange(0,Q.shape[0]+1, 100))
+                axes[0].set_xticklabels(np.arange(0,Q.shape[0]+1, 100) + from_t)
 
                 if idx >= (len(state_actions) - num_actions):
-                    axes[idx].set_xlabel('t', fontsize = 16)
+                    axes[idx].set_xlabel('t', fontsize = xy_label_fs)
                 
                 if idx % num_actions == 0:
-                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = 16) 
+                    axes[idx].set_ylabel(r'$Q^{*,\mathcal{W}|\theta_t}$', fontsize = xy_label_fs) 
                 
                 i += 1
 
 
         handles, labels = axes[idx].get_legend_handles_labels()
-        fig.legend(handles, labels, loc='lower center', fontsize = 16, bbox_to_anchor=bbox)
+        fig.legend(handles, labels, loc='lower center', fontsize = legend_fs, bbox_to_anchor=bbox)
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/' + agent_name + '_Q')
+        fig.savefig(self.foldername + '/' + agent_name + 'comparison_one_plot')
 
         plt.show()
         
