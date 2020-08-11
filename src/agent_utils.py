@@ -525,7 +525,7 @@ class SimplePlotter(object):
     
     def plot_Q_u_comparison(self, figsize = (12, 12), color_codes = None, from_t = 0,
                             to_t = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
-                            suptitle_fs = 25, xy_label_fs = 18, 
+                            suptitle_fs = 25, xy_label_fs = 18, title = None,
                             titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 300):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
@@ -564,7 +564,7 @@ class SimplePlotter(object):
 
             fig.subplots_adjust(hspace = .3, wspace=.2)
 
-            fig.suptitle(agent_name + ' estimate', fontsize=suptitle_fs)
+            fig.suptitle(agent_name + ' estimate' if title is None else title, fontsize=suptitle_fs)
 
             axes = axes.ravel()
 
@@ -634,7 +634,7 @@ class SimplePlotter(object):
 
     def plot_Q_u_comparison_one_plot(self, figsize = (12, 12), color_codes = None, from_t = 0, to_t = None,
                                      list_agents = None, bbox = (0.5, 0), rect = [0, 0.22, 1, 0.95],
-                                     suptitle_fs = 25, xy_label_fs = 18, 
+                                     suptitle_fs = 25, xy_label_fs = 18, title = None, 
                                      titles_fs = 17.5, ticks_fs = 12.5, legend_fs = 19, dpi = 300):
         '''
         Plots Q and u but also draws comparison to the monte_carlo agent
@@ -664,7 +664,7 @@ class SimplePlotter(object):
 
         fig.subplots_adjust(hspace = .3, wspace=.2)
 
-        fig.suptitle('Uncertainty estimates comparison', fontsize=suptitle_fs)
+        fig.suptitle('Uncertainty estimates comparison' if title is None else title, fontsize=suptitle_fs)
 
         axes = axes.ravel()
 
