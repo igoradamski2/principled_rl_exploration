@@ -406,7 +406,7 @@ class SimplePlotter(object):
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/regret_noerr', dpi = dpi)
+        fig.savefig(self.foldername + '/regret_noerr', dpi = dpi, bbox_inches='tight')
         
         plt.show()
 
@@ -519,7 +519,7 @@ class SimplePlotter(object):
 
             figures[agent_name] = fig
 
-            fig.savefig(self.foldername + '/' + agent_name + '_Q', dpi = dpi)
+            fig.savefig(self.foldername + '/' + agent_name + '_Q', dpi = dpi, bbox_inches='tight')
 
             plt.show()
     
@@ -806,7 +806,7 @@ class SimplePlotter(object):
             
             plt.tight_layout(rect=rect)
             
-            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs', dpi = dpi)
+            fig.savefig(self.foldername + '/' + agent_name + '_state_freqs', dpi = dpi, bbox_inches='tight')
 
             plt.show()
     
@@ -887,7 +887,7 @@ class SimplePlotter(object):
             
             plt.tight_layout(rect=rect)
             
-            fig.savefig(self.foldername + '/' + agent_name + '_action_freqs', dpi = dpi)
+            fig.savefig(self.foldername + '/' + agent_name + '_action_freqs', dpi = dpi, bbox_inches='tight')
 
             plt.show()
     
