@@ -322,7 +322,7 @@ class SimplePlotter(object):
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/regret', dpi = dpi)
+        fig.savefig(self.foldername + '/regret', dpi = dpi, bbox_inches='tight')
         
         plt.show()
     
