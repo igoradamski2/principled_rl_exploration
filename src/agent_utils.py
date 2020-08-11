@@ -586,12 +586,12 @@ class SimplePlotter(object):
                                             label = r'$\pm $2Var$_{\theta}[Q^{*,\mathcal{W}|\theta_t}]^{1/2}$')
                 
                 axes[idx].plot(Q[:, sa[0], sa[1]] - 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
-                              color = 'red', label = 'Monte Carlo uncertainty estimate using $10,000$ samples',
+                              color = 'red', label = 'Monte Carlo uncertainty estimate using $2000$ samples',
                               linestyle = '--', alpha = 0.8)
                 axes[idx].plot(Q[:, sa[0], sa[1]] + 2*np.sqrt(u_mc[:, sa[0], sa[1]]), 
                               color = 'red',
                               linestyle = '--')
-                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
+                axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
 
                 bottom = np.min(Q[:, sa[0], sa[1]] - 2.1*np.sqrt(u[:, sa[0], sa[1]]))
                 top    = np.max(Q[:, sa[0], sa[1]] + 2.1*np.sqrt(u[:, sa[0], sa[1]]))
@@ -626,7 +626,7 @@ class SimplePlotter(object):
 
             figures[agent_name] = fig
 
-            fig.savefig(self.foldername + '/' + agent_name + '_comparison')
+            fig.savefig(self.foldername + '/' + agent_name + '_comparison_' + str(from_t) + '_' + str(to_t))
 
             plt.show()
         
@@ -701,7 +701,7 @@ class SimplePlotter(object):
                                        Q[:, sa[0], sa[1]] + 2*np.sqrt(u[:, sa[0], sa[1]]),
                                             alpha=0.43, linestyle = 'None', color = color_codes[agent_name])
 
-                axes[idx].set_title('Room {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
+                axes[idx].set_title('State {}, Action {}'.format(sa[0], sa[1]), fontsize = titles_fs)
 
                 #labels = axes[idx].get_xtickslabels()
                 #print(labels)
@@ -723,7 +723,7 @@ class SimplePlotter(object):
 
         plt.tight_layout(rect=rect)
 
-        fig.savefig(self.foldername + '/' + agent_name + 'comparison_one_plot')
+        fig.savefig(self.foldername + '/' + agent_name + 'comparison_one_plot_' + str(from_t) + '_' + str(to_t))
 
         plt.show()
         
