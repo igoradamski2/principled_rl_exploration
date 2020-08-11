@@ -125,6 +125,26 @@ class ActionSelector(object):
 
         return action
     
+    def GKG1_alt(self, state):
+        '''
+        Generalized 1-step Knowledge Gradient
+        '''
+        actions = np.array([pair[1] for pair in self.agent._sa_pairs if pair[0] == state])
+
+        tilda_u     = np.sqrt(self.agent.get_reduction_u(state))
+
+        influence   = np.zeros(len(actions))
+        
+        for a in actions:
+            influence[a] = -np.abs((self.agent.Q[state, a] - np.max(np.delete(self.agent.Q[state, :], a)))/tilda_u[a])
+        
+        f_influence = influence*stats.norm.cdf(influence) + stats.norm.pdf(influence)
+        
+        kg          = f_influence * tilda_u
+        action      = np.argmax(self.agent.Q[state, :] + kg) 
+
+        return action
+
     def GKG1(self, state):
         '''
         Generalized 1-step Knowledge Gradient
@@ -172,6 +192,8 @@ class ActionSelector(object):
         action      = np.argmax(kg) 
 
         return action
+
+    
 
     def MCKG1(self, state):
         '''
