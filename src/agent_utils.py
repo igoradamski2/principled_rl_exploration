@@ -219,10 +219,11 @@ class SimplePlotter(object):
         for agent_name in list_agents:
             agent = getattr(self, agent_name)
             
-            string  = "Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1])
-            string += "\n Final % of best action of agent {} is {}".format(agent_name, agent.mean_best_action[-1])
-            string += "\n Mean successful time is {}".format(agent.mean_first_t_opt)
-            string += "\n"
+            string  = "\nFinal regret of agent {} is {} +- {}".format(agent_name, np.round(agent.mean_regret[-1]), np.round(agent.sd_regret[-1]))
+            string += "\nFinal % of best action of agent {} is {} +- {}".format(agent_name, np.round(agent.mean_best_action[-1], 1), np.round(agent.sd_best_action[-1], 1))
+            string += "\nFinal % of succesful runs of agent {} is {}".format(agent_name, np.round(100*len(agent.success)/agent.num_repeats))
+            string += "\nMean successful time is {}".format(np.round(agent.mean_first_t_opt))
+            string += "\n -----------------------------------------"
 
             print("Final regret of agent {} is {}".format(agent_name, agent.mean_regret[-1]))
             print("Final % of best action of agent {} is {}".format(agent_name, agent.mean_best_action[-1]))
